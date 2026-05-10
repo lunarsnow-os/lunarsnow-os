@@ -829,6 +829,33 @@ static int fb_init(void)
     return 0;
 }
 
+static void boot_screen(void)
+{
+    uint32_t bg = 0x0A0A1A;
+    rect(0, 0, fb_w, fb_h, bg);
+
+    char *title = "LunarSnow OS";
+    int tx = (fb_w - s_len(title) * 8) / 2;
+    txt(tx, fb_h / 2 - 50, title, 0xE6E6F0, bg);
+
+    char *sub = "Booting...";
+    int sx = (fb_w - s_len(sub) * 8) / 2;
+    txt(sx, fb_h / 2 - 20, sub, 0x8888AA, bg);
+
+    int pbx = fb_w / 2 - 100, pby = fb_h / 2 + 10;
+    rect(pbx, pby, 200, 14, 0x1A1A3A);
+    border(pbx, pby, 200, 14, 0x3C50A0);
+    flip();
+
+    for (int p = 0; p <= 100; p += 2) {
+        rect(pbx + 2, pby + 2, (196 * p) / 100, 10, 0x3C50A0);
+        flip();
+        for (volatile int d = 0; d < 80000; d++);
+    }
+
+    for (volatile int d = 0; d < 500000; d++);
+}
+
 /* ================================================================
    ENTRY
    ================================================================ */
@@ -838,6 +865,7 @@ void kmain(uint32_t magic, void *mbinfo)
     (void)magic; (void)mbinfo;
     if (fb_init() < 0) return;
 
+    boot_screen();
     mouse_init();
 
     run = 1;
