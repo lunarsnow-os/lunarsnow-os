@@ -136,6 +136,9 @@ static void pixel(int x, int y, uint32_t c)
 
 static void rect(int x, int y, int w, int h, uint32_t c)
 {
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (w <= 0 || h <= 0) return;
     for (int r = y; r < y + h && r < fb_h; r++)
         for (int cl = x; cl < x + w && cl < fb_w; cl++)
             sbuf[r * (fb_pch / 4) + cl] = c;
@@ -449,8 +452,8 @@ static void render(void)
     if (about_win >= 0 && about_win < nw) {
         int wx = wins[about_win].x + 10;
         int wy = wins[about_win].y + 28;
-        txt(wx, wy, "Lesano", C_TTT, wins[about_win].bg);
-        txt(wx, wy + 18, "Nixxlte ver Alpha 0.1", C_LBL, wins[about_win].bg);
+        txt(wx, wy, "Made by: Lesano and Nixxlte :3", C_TTT, wins[about_win].bg);
+        txt(wx, wy + 18, "Version: Alpha 0.1", C_LBL, wins[about_win].bg);
     }
 
     mouse_draw();
