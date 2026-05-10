@@ -211,6 +211,7 @@ static int ext_key;
 
 #define KEY_UP   256
 #define KEY_DOWN 257
+#define KEY_SUPER 258
 
 static void kb_push(int c)
 {
@@ -241,6 +242,7 @@ static void kb_poll(void)
             else if (ext_key) {
                 if (data == 0x48) kb_push(KEY_UP);
                 if (data == 0x50) kb_push(KEY_DOWN);
+                if (data == 0x5B) kb_push(KEY_SUPER);
                 ext_key = 0;
             } else {
                 char c = shift ? kbs[data] : kbm[data];
@@ -686,6 +688,10 @@ void kmain(uint32_t magic, void *mbinfo)
             menu_focus = (menu_focus - 1 + menu_n) % menu_n;
         if (key == KEY_DOWN && menu_open)
             menu_focus = (menu_focus + 1) % menu_n;
+        if (key == KEY_SUPER) {
+            if (menu_open) { menu_open = 0; focus_mode = 0; }
+            else { menu_open = 1; menu_focus = 0; focus_mode = 2; }
+        }
 
         render();
     }
