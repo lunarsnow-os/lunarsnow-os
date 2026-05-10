@@ -44,3 +44,8 @@ lunarsnow.iso: lunarsnow.elf
 
 run-iso: lunarsnow.iso
 	qemu-system-x86_64 -cdrom lunarsnow.iso -m 64
+
+# Usage: make remote REPO=org/repo
+remote:
+	git remote add origin https://github.com/$(REPO).git
+	git push -u origin main
