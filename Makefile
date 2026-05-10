@@ -36,11 +36,13 @@ run-gtk: lunarsnow.elf
 
 iso: lunarsnow.iso
 
+GRUB_MKRESCUE = $(shell command -v grub2-mkrescue || command -v grub-mkrescue || echo grub-mkrescue)
+
 lunarsnow.iso: lunarsnow.elf
 	mkdir -p iso/boot/grub
 	cp lunarsnow.elf iso/boot/
 	printf 'set timeout=0\nset default=0\nmenuentry "LunarSnow OS" {\n  multiboot /boot/lunarsnow.elf\n  boot\n}' > iso/boot/grub/grub.cfg
-	grub2-mkrescue -o lunarsnow.iso iso/ 2>/dev/null
+	$(GRUB_MKRESCUE) -o lunarsnow.iso iso/
 
 run-iso: lunarsnow.iso
 	qemu-system-x86_64 -cdrom lunarsnow.iso -m 64

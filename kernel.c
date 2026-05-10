@@ -172,6 +172,10 @@ static void mouse_draw(void);
 static void wclose(int idx);
 static void cb_new(void);
 static void cb_about(void);
+static void cb_term(void);
+static void cb_calc(void);
+static void term_draw(void);
+static void calc_draw(void);
 static void cb_shutdown(void);
 
 /* ================================================================
@@ -319,7 +323,15 @@ typedef struct {
 } Win;
 
 static Win wins[MAX_W];
-static int nw, act, run, about_win = -1;
+static int nw, act, run, about_win = -1, term_win = -1, calc_win = -1;
+
+#define TERM_COLS 70
+#define TERM_ROWS 18
+#define TERM_BUF 128
+static char term_lines[TERM_BUF][TERM_COLS + 1];
+static int term_cnt;
+static char term_input[TERM_COLS + 1];
+static int term_len;
 
 enum {
     C_DSK    = 0x0F0F1C,
@@ -399,8 +411,8 @@ static void wdraw(int wi)
     }
 }
 
-static const char *menu_items[] = { "New Window", "About", "Shutdown" };
-static int menu_n = 3;
+static const char *menu_items[] = { "New Window", "Terminal", "About", "Calculator", "Shutdown" };
+static int menu_n = 5;
 
 static void render(void)
 {
@@ -458,6 +470,9 @@ static void render(void)
         txt(wx, wy + 18, "Version: Alpha 0.1", C_LBL, wins[about_win].bg);
     }
 
+    term_draw();
+    calc_draw();
+
     mouse_draw();
     flip();
 }
@@ -477,6 +492,155 @@ static void wclose(int idx)
     if (act >= nw && nw > 0) act = nw - 1;
     if (about_win == idx) about_win = -1;
     else if (about_win > idx) about_win--;
+    if (term_win == idx) term_win = -1;
+    else if (term_win > idx) term_win--;
+    if (calc_win == idx) calc_win = -1;
+    else if (calc_win > idx) calc_win--;
+}
+
+/* ================================================================
+   TERMINAL
+   ================================================================ */
+
+static void term_add(const char *s)
+{
+    if (term_cnt < TERM_BUF) term_cnt++;
+    for (int i = 0; i < term_cnt - 1; i++)
+        mcpy(term_lines[i], term_lines[i + 1], TERM_COLS + 1);
+    int j;
+    for (j = 0; j < TERM_COLS && s[j]; j++) term_lines[term_cnt - 1][j] = s[j];
+    while (j <= TERM_COLS) term_lines[term_cnt - 1][j++] = 0;
+}
+
+static void term_exec(void)
+{
+    term_add(term_input);
+    const char *p = term_input;
+    while (*p == ' ') p++;
+    if (*p == 0) { term_input[0] = 0; term_len = 0; return; }
+
+    char cmd[TERM_COLS + 1]; int ci = 0;
+    while (*p && *p != ' ' && ci < TERM_COLS) cmd[ci++] = *p++;
+    cmd[ci] = 0;
+    while (*p == ' ') p++;
+
+    if (s_len(cmd) == 4 && cmd[0] == 'h' && cmd[1] == 'e' && cmd[2] == 'l' && cmd[3] == 'p') {
+        term_add("  echo <text>  - print text");
+        term_add("  about        - open About");
+        term_add("  cls          - clear screen");
+        term_add("  time         - show time");
+        term_add("  ver          - show version");
+        term_add("  shutdown     - power off");
+        term_add("  newwin       - new window");
+        term_add("  help         - this list");
+    } else if (ci == 4 && cmd[0] == 'e' && cmd[1] == 'c' && cmd[2] == 'h' && cmd[3] == 'o') {
+        term_add(p);
+    } else if (ci == 5 && cmd[0] == 'a' && cmd[1] == 'b' && cmd[2] == 'o' && cmd[3] == 'u' && cmd[4] == 't') {
+        cb_about();
+    } else if (ci == 3 && cmd[0] == 'c' && cmd[1] == 'l' && cmd[2] == 's') {
+        term_cnt = 0;
+    } else if (ci == 4 && cmd[0] == 't' && cmd[1] == 'i' && cmd[2] == 'm' && cmd[3] == 'e') {
+        int h, m, s; rtc_read(&h, &m, &s);
+        char buf[TERM_COLS + 1]; int bi = 0;
+        buf[bi++] = '0' + h / 10; buf[bi++] = '0' + h % 10;
+        buf[bi++] = ':'; buf[bi++] = '0' + m / 10; buf[bi++] = '0' + m % 10;
+        buf[bi++] = ':'; buf[bi++] = '0' + s / 10; buf[bi++] = '0' + s % 10;
+        buf[bi] = 0; term_add(buf);
+    } else if (ci == 3 && cmd[0] == 'v' && cmd[1] == 'e' && cmd[2] == 'r') {
+        term_add("LunarSnow OS Alpha 0.1");
+    } else if (ci == 8 && cmd[0] == 's' && cmd[1] == 'h' && cmd[2] == 'u' && cmd[3] == 't'
+               && cmd[4] == 'd' && cmd[5] == 'o' && cmd[6] == 'w' && cmd[7] == 'n') {
+        run = 0;
+    } else if (ci == 6 && cmd[0] == 'n' && cmd[1] == 'e' && cmd[2] == 'w'
+               && cmd[3] == 'w' && cmd[4] == 'i' && cmd[5] == 'n') {
+        cb_new();
+    } else {
+        term_add("unknown command (try help)");
+    }
+    term_input[0] = 0; term_len = 0;
+}
+
+static void term_key(int key)
+{
+    if (key >= 32 && key <= 126 && term_len < TERM_COLS) {
+        term_input[term_len++] = key;
+        term_input[term_len] = 0;
+    }
+    if (key == 8 && term_len > 0) term_input[--term_len] = 0;
+    if (key == '\n') term_exec();
+}
+
+static void term_draw(void)
+{
+    if (term_win < 0 || term_win >= nw) return;
+    Win *w = &wins[term_win];
+    int wx = w->x + 4, wy = w->y + 22;
+    uint32_t bg = 0x000000, fg = 0x00CC00;
+    int max_rows = (w->h - 26) / 16;
+    if (max_rows < 3) max_rows = 3;
+    rect(wx - 2, wy - 2, w->w - 8, w->h - 24, bg);
+
+    int avail = max_rows - 1;
+    int start = term_cnt > avail ? term_cnt - avail : 0;
+    int dy = wy;
+    for (int i = start; i < term_cnt; i++, dy += 16) {
+        for (int j = 0; j < TERM_COLS && term_lines[i][j]; j++)
+            chr(wx + j * 8, dy, term_lines[i][j], fg, bg);
+    }
+
+    int px = wx, py = wy + max_rows * 16 - 16;
+    txt(px, py, "> ", 0x00FF00, bg);
+    for (int j = 0; j < term_len; j++)
+        chr(px + 16 + j * 8, py, term_input[j], fg, bg);
+}
+
+/* ================================================================
+   CALCULATOR
+   ================================================================ */
+
+static int calc_val, calc_cur, calc_op;
+static char calc_disp[16];
+
+static void calc_disp_upd(void);
+
+#define CD(n) static void cc##n(void) { if (calc_cur < 9999999) calc_cur = calc_cur * 10 + n; calc_disp_upd(); }
+CD(0) CD(1) CD(2) CD(3) CD(4) CD(5) CD(6) CD(7) CD(8) CD(9)
+
+static void calc_disp_upd(void)
+{
+    if (calc_cur == 0) { calc_disp[0] = '0'; calc_disp[1] = 0; return; }
+    int v = calc_cur, p = 14;
+    calc_disp[15] = 0;
+    while (v && p >= 0) { calc_disp[p--] = '0' + (v % 10); v /= 10; }
+    int i = 0;
+    while (p + 1 + i <= 14) { calc_disp[i] = calc_disp[p + 1 + i]; i++; }
+    calc_disp[i] = 0;
+}
+
+static void ccE(void)
+{
+    if (calc_op == 1) calc_val += calc_cur;
+    else if (calc_op == 2) calc_val -= calc_cur;
+    else if (calc_op == 3) calc_val *= calc_cur;
+    else if (calc_op == 4 && calc_cur) calc_val /= calc_cur;
+    else calc_val = calc_cur;
+    calc_cur = calc_val; calc_op = 0; calc_disp_upd();
+}
+
+static void ccP(void) { ccE(); calc_val = calc_cur; calc_op = 1; calc_cur = 0; }
+static void ccS(void) { ccE(); calc_val = calc_cur; calc_op = 2; calc_cur = 0; }
+static void ccM(void) { ccE(); calc_val = calc_cur; calc_op = 3; calc_cur = 0; }
+static void ccD(void) { ccE(); calc_val = calc_cur; calc_op = 4; calc_cur = 0; }
+static void ccC(void) { calc_val = 0; calc_cur = 0; calc_op = 0; calc_disp_upd(); }
+
+static void calc_draw(void)
+{
+    if (calc_win < 0 || calc_win >= nw) return;
+    Win *w = &wins[calc_win];
+    int dx = w->x + 10, dy = w->y + 8;
+    rect(dx, dy, 220, 34, 0xFFFFFF);
+    border(dx, dy, 220, 34, 0x888888);
+    txt(dx + 8, dy + 9, calc_disp[0] ? calc_disp : "0", 0x000000, 0xFFFFFF);
 }
 
 /* ================================================================
@@ -516,8 +680,10 @@ static void mouse_click(void)
             int item = (y - my - 2) / 24;
             if (item >= 0 && item < menu_n) {
                 if (item == 0) cb_new();
-                if (item == 1) cb_about();
-                if (item == 2) cb_shutdown();
+                if (item == 1) cb_term();
+                if (item == 2) cb_about();
+                if (item == 3) cb_calc();
+                if (item == 4) cb_shutdown();
             }
         }
         menu_open = 0; focus_mode = 0;
@@ -592,7 +758,43 @@ static void cb_about(void)
 {
     about_win = wnew("About", 230, 180, 280, 140);
     wbtn(about_win, "OK", 110, 90, 60, 26, cb_close);
-} 
+}
+
+static void cb_term(void)
+{
+    term_win = wnew("Terminal", 120, 80, 580, 400);
+}
+
+static void cb_calc(void)
+{
+    calc_win = wnew("Calculator", 200, 140, 260, 290);
+    wins[calc_win].bg = 0xD4D4D4;
+    int bx, by;
+    /* Row 1: 7 8 9 / */
+    by = 50; bx = 8;
+    wbtn(calc_win, "7", bx, by, 52, 34, cc7);
+    wbtn(calc_win, "8", bx+58, by, 52, 34, cc8);
+    wbtn(calc_win, "9", bx+116, by, 52, 34, cc9);
+    wbtn(calc_win, "/", bx+174, by, 52, 34, ccD);
+    /* Row 2: 4 5 6 * */
+    by = 88;
+    wbtn(calc_win, "4", bx, by, 52, 34, cc4);
+    wbtn(calc_win, "5", bx+58, by, 52, 34, cc5);
+    wbtn(calc_win, "6", bx+116, by, 52, 34, cc6);
+    wbtn(calc_win, "*", bx+174, by, 52, 34, ccM);
+    /* Row 3: 1 2 3 - */
+    by = 126;
+    wbtn(calc_win, "1", bx, by, 52, 34, cc1);
+    wbtn(calc_win, "2", bx+58, by, 52, 34, cc2);
+    wbtn(calc_win, "3", bx+116, by, 52, 34, cc3);
+    wbtn(calc_win, "-", bx+174, by, 52, 34, ccS);
+    /* Row 4: C 0 = + */
+    by = 164;
+    wbtn(calc_win, "C", bx, by, 52, 34, ccC);
+    wbtn(calc_win, "0", bx+58, by, 52, 34, cc0);
+    wbtn(calc_win, "=", bx+116, by, 52, 34, ccE);
+    wbtn(calc_win, "+", bx+174, by, 52, 34, ccP);
+}
 
 /* ================================================================
    FRAMEBUFFER INIT
@@ -653,6 +855,14 @@ void kmain(uint32_t magic, void *mbinfo)
             wins[mouse_drag_win].y = mouse_y - mouse_drag_oy;
 
         int key = kb_pop();
+        if (key < 0) goto after_kb;
+
+        if (act == term_win && term_win >= 0 && key != '\t' && key != 27) {
+            if (key == KEY_UP || key == KEY_DOWN) {}
+            else term_key(key);
+            goto after_kb;
+        }
+
         if (key == '\t') {
             if (menu_open) {
                 menu_focus = (menu_focus + 1) % menu_n;
@@ -669,8 +879,10 @@ void kmain(uint32_t magic, void *mbinfo)
         if (key == '\n' || key == ' ') {
             if (menu_open) {
                 if (menu_focus == 0) cb_new();
-                if (menu_focus == 1) cb_about();
-                if (menu_focus == 2) cb_shutdown();
+                if (menu_focus == 1) cb_term();
+                if (menu_focus == 2) cb_about();
+                if (menu_focus == 3) cb_calc();
+                if (menu_focus == 4) cb_shutdown();
                 menu_open = 0; focus_mode = 0;
             } else if (focus_mode == 1) {
                 menu_open = 1; menu_focus = 0; focus_mode = 2;
@@ -692,6 +904,7 @@ void kmain(uint32_t magic, void *mbinfo)
             if (menu_open) { menu_open = 0; focus_mode = 0; }
             else { menu_open = 1; menu_focus = 0; focus_mode = 2; }
         }
+    after_kb: ;
 
         render();
     }
