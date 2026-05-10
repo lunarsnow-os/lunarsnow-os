@@ -1,21 +1,7 @@
 #include <stdint.h>
+#include "lunarsnow.h"
+#include "progs.h"
 #include "font8x16.h"
-
-/* ================================================================
-   UTILITY
-   ================================================================ */
-
-static int s_len(const char *s)
-{
-    int n = 0; while (s[n]) n++; return n;
-}
-
-static void s_cpy(char *d, const char *s, int max)
-{
-    int i;
-    for (i = 0; i < max - 1 && s[i]; i++) d[i] = s[i];
-    d[i] = 0;
-}
 
 /* ================================================================
    PORT I/O
@@ -57,15 +43,13 @@ static int bcd2bin(uint8_t v)
     return ((v >> 4) * 10) + (v & 0xF);
 }
 
-static void rtc_read(int *h, int *m, int *s)
+void rtc_read(int *h, int *m, int *s)
 {
     uint8_t sec, min, hour;
-    /* wait until no update in progress */
     while (cmos_r(0x0A) & 0x80);
     sec  = cmos_r(0x00);
     min  = cmos_r(0x02);
     hour = cmos_r(0x04);
-    /* read again if UIP changed during read */
     if (cmos_r(0x0A) & 0x80) { rtc_read(h, m, s); return; }
     *h = bcd2bin(hour);
     *m = bcd2bin(min);
@@ -100,700 +84,11 @@ static void vbe_w(uint16_t idx, uint16_t v)
 
 static void vbe_set(int w, int h, int bpp)
 {
-    vbe_w(4, 0x00);  /* disable */
-    vbe_w(1, w);     /* X resolution */
-    vbe_w(2, h);     /* Y resolution */
-    vbe_w(3, bpp);   /* bits per pixel */
-    vbe_w(4, 0x41);  /* enable + LFB */
-}
-
-/* ================================================================
-   FRAMEBUFFER
-   ================================================================ */
-
-static uint32_t *fb;
-static int fb_w, fb_h, fb_pch;
-
-/* shadow buffer for double buffering */
-static uint32_t shadow[800 * 600];
-static uint32_t *sbuf;
-
-#define RGB(r,g,b)  ((uint32_t)(((r)<<16)|((g)<<8)|(b)))
-
-static void flip(void)
-{
-    uint32_t *s = shadow;
-    uint32_t *d = fb;
-    int n = fb_w * fb_h;
-    while (n--) *d++ = *s++;
-}
-
-static void pixel(int x, int y, uint32_t c)
-{
-    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) return;
-    sbuf[y * (fb_pch / 4) + x] = c;
-}
-
-static void rect(int x, int y, int w, int h, uint32_t c)
-{
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (w <= 0 || h <= 0) return;
-    for (int r = y; r < y + h && r < fb_h; r++)
-        for (int cl = x; cl < x + w && cl < fb_w; cl++)
-            sbuf[r * (fb_pch / 4) + cl] = c;
-}
-
-static void chr(int x, int y, unsigned char ch, uint32_t fg, uint32_t bg)
-{
-    if (ch < 32 || ch > 126) ch = ' ';
-    int idx = ch - 32;
-    for (int row = 0; row < 16; row++) {
-        unsigned char bits = font8x16[idx][row];
-        for (int col = 0; col < 8; col++)
-            pixel(x + col, y + row, (bits & (0x80 >> col)) ? fg : bg);
-    }
-}
-
-static void txt(int x, int y, const char *s, uint32_t fg, uint32_t bg)
-{
-    for (; *s; s++) { chr(x, y, *s, fg, bg); x += 8; }
-}
-
-static void border(int x, int y, int w, int h, uint32_t c)
-{
-    rect(x, y, w, 1, c); rect(x, y + h - 1, w, 1, c);
-    rect(x, y, 1, h, c); rect(x + w - 1, y, 1, h, c);
-}
-
-/* forward declarations */
-static void mouse_process(uint8_t data);
-static void mouse_draw(void);
-static void wclose(int idx);
-static void cb_new(void);
-static void cb_about(void);
-static void cb_term(void);
-static void cb_calc(void);
-static void term_draw(void);
-static void calc_draw(void);
-static void cb_shutdown(void);
-
-/* ================================================================
-   KEYBOARD
-   ================================================================ */
-
-#define KB_S 0x64
-#define KB_D 0x60
-
-static int shift;
-
-static const char kbm[128] = {
-    0,27,'1','2','3','4','5','6','7','8','9','0','-','=',8,
-    9,'q','w','e','r','t','y','u','i','o','p','[',']',10,
-    0,'a','s','d','f','g','h','j','k','l',';',39,'`',
-    0,92,'z','x','c','v','b','n','m',',','.','/',0,
-    '*',0,' ',0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,'-',0,0,0,'+',0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-};
-
-static const char kbs[128] = {
-    0,27,'!','@','#','$','%','^','&','*','(',')','_','+',8,
-    9,'Q','W','E','R','T','Y','U','I','O','P','{','}',10,
-    0,'A','S','D','F','G','H','J','K','L',':',34,'~',
-    0,'|','Z','X','C','V','B','N','M','<','>','?',0,
-    '*',0,' ',0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,'-',0,0,0,'+',0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-};
-
-#define KB_BUF 32
-static int kbq[KB_BUF], kbh, kbt;
-static int ext_key;
-
-#define KEY_UP   256
-#define KEY_DOWN 257
-#define KEY_SUPER 258
-
-static void kb_push(int c)
-{
-    int n = (kbh + 1) % KB_BUF;
-    if (n != kbt) { kbq[kbh] = c; kbh = n; }
-}
-
-static int kb_pop(void)
-{
-    if (kbh == kbt) return -1;
-    int c = kbq[kbt]; kbt = (kbt + 1) % KB_BUF; return c;
-}
-
-static void kb_poll(void)
-{
-    while (inb(KB_S) & 1) {
-        uint8_t st = inb(KB_S);
-        if (!(st & 1)) break;
-        uint8_t data = inb(KB_D);
-        if (st & 0x20) { mouse_process(data); continue; }
-        if (data == 0xE0) { ext_key = 1; continue; }
-        if (data & 0x80) {
-            uint8_t mk = data & 0x7F;
-            if (mk == 0x2A || mk == 0x36) shift = 0;
-            ext_key = 0;
-        } else {
-            if (data == 0x2A || data == 0x36) { shift = 1; ext_key = 0; }
-            else if (ext_key) {
-                if (data == 0x48) kb_push(KEY_UP);
-                if (data == 0x50) kb_push(KEY_DOWN);
-                if (data == 0x5B) kb_push(KEY_SUPER);
-                ext_key = 0;
-            } else {
-                char c = shift ? kbs[data] : kbm[data];
-                if (c) kb_push(c);
-            }
-        }
-    }
-}
-
-/* ================================================================
-   MOUSE
-   ================================================================ */
-
-static int mouse_x, mouse_y;
-static int mouse_btn;
-static int mouse_drag;
-static int mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
-static int mouse_cycle;
-static uint8_t mouse_pkt[3];
-
-static void mouse_process(uint8_t data)
-{
-    if (mouse_cycle == 0) {
-        if (!(data & 0x08)) return;
-        mouse_pkt[0] = data; mouse_cycle = 1;
-    } else if (mouse_cycle == 1) {
-        mouse_pkt[1] = data; mouse_cycle = 2;
-    } else {
-        mouse_pkt[2] = data; mouse_cycle = 0;
-        int dx = (int8_t)mouse_pkt[1];
-        int dy = -(int8_t)mouse_pkt[2];
-        mouse_btn = mouse_pkt[0] & 3;
-        mouse_x += dx; mouse_y += dy;
-        if (mouse_x < 0) mouse_x = 0;
-        if (mouse_x >= fb_w) mouse_x = fb_w - 1;
-        if (mouse_y < 0) mouse_y = 0;
-        if (mouse_y >= fb_h) mouse_y = fb_h - 1;
-    }
-}
-
-static void mouse_init(void)
-{
-    outb(0x64, 0xA8);
-    while (inb(0x64) & 2);
-    outb(0x64, 0xD4);
-    while (inb(0x64) & 2);
-    outb(0x60, 0xF6);
-    while (!(inb(0x64) & 1)) { if (!(inb(0x64) & 1)) continue; break; }
-    inb(0x60);
-    outb(0x64, 0xD4);
-    while (inb(0x64) & 2);
-    outb(0x60, 0xF4);
-    while (!(inb(0x64) & 1)) { if (!(inb(0x64) & 1)) continue; break; }
-    inb(0x60);
-    mouse_x = fb_w / 2;
-    mouse_y = fb_h / 2;
-}
-
-/* ================================================================
-   GUI
-   ================================================================ */
-
-#define MAX_W 8
-#define MAX_B 16
-
-typedef struct { int x, y, w, h; char t[24]; void (*cb)(void); } Btn;
-
-typedef struct {
-    int x, y, w, h;
-    char title[24];
-    uint32_t bg, tb;
-    Btn btns[MAX_B];
-    int nb, fc;
-} Win;
-
-static Win wins[MAX_W];
-static int nw, act, run, about_win = -1, term_win = -1, calc_win = -1;
-
-#define TERM_COLS 70
-#define TERM_ROWS 18
-#define TERM_BUF 128
-static char term_lines[TERM_BUF][TERM_COLS + 1];
-static int term_cnt;
-static char term_input[TERM_COLS + 1];
-static int term_len;
-
-enum {
-    C_DSK    = 0x0F0F1C,
-    C_WBG    = 0x1E1E32,
-    C_TAC    = 0x3C50A0,
-    C_TIN    = 0x323246,
-    C_BDR    = 0x505078,
-    C_BN     = 0x327878,
-    C_BF     = 0x4A9696,
-    C_BT     = 0xC8C8D2,
-    C_LBL    = 0xB4B4BE,
-    C_TTT    = 0xE6E6F0,
-    C_CLS    = 0xB43232,
-    C_TBAR   = 0x16162A,
-    C_START  = 0x3C50A0,
-    C_STARTF = 0x5A70C0,
-    C_TBTN   = 0x282845,
-    C_TBTNA  = 0x3C3C60,
-    C_MBG    = 0x1E1E35,
-    C_MFOC   = 0x3C50A0,
-};
-
-#define TB_H  28    /* taskbar height */
-#define ST_W  60    /* start button width */
-#define MN_W  160   /* menu width */
-
-/* focus: 0 = window buttons, 1 = Start button, 2 = menu */
-static int focus_mode;
-static int menu_focus, menu_open;
-
-static int wnew(const char *t, int x, int y, int w, int h)
-{
-    if (nw >= MAX_W) return -1;
-    int i = nw++;
-    wins[i].x = x; wins[i].y = y; wins[i].w = w; wins[i].h = h;
-    s_cpy(wins[i].title, t, 24);
-    wins[i].bg = C_WBG; wins[i].tb = C_TAC;
-    wins[i].nb = 0; wins[i].fc = 0;
-    act = i; return i;
-}
-
-static int wbtn(int wi, const char *t, int x, int y, int w, int h,
-                void (*cb)(void))
-{
-    if (wi < 0 || wi >= nw) return -1;
-    Btn *b = &wins[wi].btns[wins[wi].nb++];
-    b->x = x; b->y = y; b->w = w; b->h = h; b->cb = cb;
-    s_cpy(b->t, t, 24); return wins[wi].nb - 1;
-}
-
-static void wdraw(int wi)
-{
-    Win *w = &wins[wi];
-    int x = w->x, y = w->y, ww = w->w, hh = w->h;
-    int a = (wi == act);
-    uint32_t tc = a ? C_TAC : C_TIN;
-    uint32_t bc = a ? C_BDR : C_TIN;
-
-    rect(x + 2, y + 20, ww - 4, hh - 22, w->bg);
-    rect(x + 2, y + 2, ww - 4, 18, tc);
-    txt(x + 6, y + 3, w->title, C_TTT, tc);
-
-    rect(x + ww - 18, y + 3, 15, 15, C_CLS);
-    txt(x + ww - 15, y + 4, "X", C_TTT, C_CLS);
-
-    border(x, y, ww, hh, bc);
-
-    for (int i = 0; i < w->nb; i++) {
-        Btn *b = &w->btns[i];
-        int bx = x + 2 + b->x, by = y + 20 + b->y;
-        int f = (i == w->fc && wi == act);
-        uint32_t col = f ? C_BF : C_BN;
-        rect(bx, by, b->w, b->h, col);
-        border(bx, by, b->w, b->h, f ? 0xFFFFFF : 0x1E4E4E);
-        int l = s_len(b->t);
-        txt(bx + (b->w - l * 8) / 2, by + (b->h - 16) / 2, b->t, C_BT, col);
-    }
-}
-
-static const char *menu_items[] = { "New Window", "Terminal", "About", "Calculator", "Shutdown" };
-static int menu_n = 5;
-
-static void render(void)
-{
-    rect(0, 0, fb_w, fb_h, C_DSK);
-    for (int i = 0; i < nw; i++) wdraw(i);
-
-    /* Taskbar */
-    rect(0, fb_h - TB_H, fb_w, TB_H, C_TBAR);
-    border(0, fb_h - TB_H, fb_w, TB_H, C_BDR);
-
-    uint32_t scol = (focus_mode == 1) ? C_STARTF : C_START;
-    rect(2, fb_h - TB_H + 2, ST_W, TB_H - 4, scol);
-    txt(8, fb_h - TB_H + 6, "Start", C_TTT, scol);
-
-    int bx = ST_W + 6;
-    for (int i = 0; i < nw; i++) {
-        uint32_t c = (i == act) ? C_TBTNA : C_TBTN;
-        int bw = s_len(wins[i].title) * 8 + 12;
-        if (bw > 140) bw = 140;
-        rect(bx, fb_h - TB_H + 2, bw, TB_H - 4, c);
-        txt(bx + 4, fb_h - TB_H + 6, wins[i].title, C_TTT, c);
-        bx += bw + 2;
-    }
-
-    /* Clock */
-    int ch, cm, cs;
-    rtc_read(&ch, &cm, &cs);
-    char tstr[6]; int ti = 0;
-    tstr[ti++] = '0' + ch / 10;
-    tstr[ti++] = '0' + ch % 10;
-    tstr[ti++] = ':';
-    tstr[ti++] = '0' + cm / 10;
-    tstr[ti++] = '0' + cm % 10;
-    tstr[ti] = 0;
-    int cx = fb_w - 4 - 8 * 5;
-    txt(cx, fb_h - TB_H + 6, tstr, C_TTT, C_TBAR);
-
-    /* Start menu */
-    if (menu_open) {
-        int mx = 2;
-        int my = fb_h - TB_H - menu_n * 24 - 4;
-        rect(mx, my, MN_W, menu_n * 24 + 4, C_MBG);
-        border(mx, my, MN_W, menu_n * 24 + 4, C_BDR);
-        for (int i = 0; i < menu_n; i++) {
-            uint32_t mc = (i == menu_focus && focus_mode == 2) ? C_MFOC : C_MBG;
-            rect(mx + 2, my + 2 + i * 24, MN_W - 4, 24, mc);
-            txt(mx + 6, my + 4 + i * 24, menu_items[i], C_TTT, mc);
-        }
-    }
-
-    if (about_win >= 0 && about_win < nw) {
-        int wx = wins[about_win].x + 10;
-        int wy = wins[about_win].y + 28;
-        txt(wx, wy, "Made by: Lesano and Nixxlte :3", C_TTT, wins[about_win].bg);
-        txt(wx, wy + 18, "Version: Alpha 0.1", C_LBL, wins[about_win].bg);
-    }
-
-    term_draw();
-    calc_draw();
-
-    mouse_draw();
-    flip();
-}
-
-static void mcpy(void *d, const void *s, int n)
-{
-    unsigned char *cd = d;
-    const unsigned char *cs = s;
-    while (n--) *cd++ = *cs++;
-}
-
-static void wclose(int idx)
-{
-    if (idx < 0 || idx >= nw) return;
-    for (int i = idx; i < nw - 1; i++) mcpy(&wins[i], &wins[i+1], sizeof(Win));
-    nw--;
-    if (act >= nw && nw > 0) act = nw - 1;
-    if (about_win == idx) about_win = -1;
-    else if (about_win > idx) about_win--;
-    if (term_win == idx) term_win = -1;
-    else if (term_win > idx) term_win--;
-    if (calc_win == idx) calc_win = -1;
-    else if (calc_win > idx) calc_win--;
-}
-
-/* ================================================================
-   TERMINAL
-   ================================================================ */
-
-static void term_add(const char *s)
-{
-    if (term_cnt < TERM_BUF) term_cnt++;
-    for (int i = 0; i < term_cnt - 1; i++)
-        mcpy(term_lines[i], term_lines[i + 1], TERM_COLS + 1);
-    int j;
-    for (j = 0; j < TERM_COLS && s[j]; j++) term_lines[term_cnt - 1][j] = s[j];
-    while (j <= TERM_COLS) term_lines[term_cnt - 1][j++] = 0;
-}
-
-static void term_exec(void)
-{
-    term_add(term_input);
-    const char *p = term_input;
-    while (*p == ' ') p++;
-    if (*p == 0) { term_input[0] = 0; term_len = 0; return; }
-
-    char cmd[TERM_COLS + 1]; int ci = 0;
-    while (*p && *p != ' ' && ci < TERM_COLS) cmd[ci++] = *p++;
-    cmd[ci] = 0;
-    while (*p == ' ') p++;
-
-    if (s_len(cmd) == 4 && cmd[0] == 'h' && cmd[1] == 'e' && cmd[2] == 'l' && cmd[3] == 'p') {
-        term_add("  echo <text>  - print text");
-        term_add("  about        - open About");
-        term_add("  cls          - clear screen");
-        term_add("  time         - show time");
-        term_add("  ver          - show version");
-        term_add("  shutdown     - power off");
-        term_add("  newwin       - new window");
-        term_add("  help         - this list");
-    } else if (ci == 4 && cmd[0] == 'e' && cmd[1] == 'c' && cmd[2] == 'h' && cmd[3] == 'o') {
-        term_add(p);
-    } else if (ci == 5 && cmd[0] == 'a' && cmd[1] == 'b' && cmd[2] == 'o' && cmd[3] == 'u' && cmd[4] == 't') {
-        cb_about();
-    } else if (ci == 3 && cmd[0] == 'c' && cmd[1] == 'l' && cmd[2] == 's') {
-        term_cnt = 0;
-    } else if (ci == 4 && cmd[0] == 't' && cmd[1] == 'i' && cmd[2] == 'm' && cmd[3] == 'e') {
-        int h, m, s; rtc_read(&h, &m, &s);
-        char buf[TERM_COLS + 1]; int bi = 0;
-        buf[bi++] = '0' + h / 10; buf[bi++] = '0' + h % 10;
-        buf[bi++] = ':'; buf[bi++] = '0' + m / 10; buf[bi++] = '0' + m % 10;
-        buf[bi++] = ':'; buf[bi++] = '0' + s / 10; buf[bi++] = '0' + s % 10;
-        buf[bi] = 0; term_add(buf);
-    } else if (ci == 3 && cmd[0] == 'v' && cmd[1] == 'e' && cmd[2] == 'r') {
-        term_add("LunarSnow OS Alpha 0.1");
-    } else if (ci == 8 && cmd[0] == 's' && cmd[1] == 'h' && cmd[2] == 'u' && cmd[3] == 't'
-               && cmd[4] == 'd' && cmd[5] == 'o' && cmd[6] == 'w' && cmd[7] == 'n') {
-        run = 0;
-    } else if (ci == 6 && cmd[0] == 'n' && cmd[1] == 'e' && cmd[2] == 'w'
-               && cmd[3] == 'w' && cmd[4] == 'i' && cmd[5] == 'n') {
-        cb_new();
-    } else {
-        term_add("unknown command (try help)");
-    }
-    term_input[0] = 0; term_len = 0;
-}
-
-static void term_key(int key)
-{
-    if (key >= 32 && key <= 126 && term_len < TERM_COLS) {
-        term_input[term_len++] = key;
-        term_input[term_len] = 0;
-    }
-    if (key == 8 && term_len > 0) term_input[--term_len] = 0;
-    if (key == '\n') term_exec();
-}
-
-static void term_draw(void)
-{
-    if (term_win < 0 || term_win >= nw) return;
-    Win *w = &wins[term_win];
-    int wx = w->x + 4, wy = w->y + 22;
-    uint32_t bg = 0x000000, fg = 0x00CC00;
-    int max_rows = (w->h - 26) / 16;
-    if (max_rows < 3) max_rows = 3;
-    rect(wx - 2, wy - 2, w->w - 8, w->h - 24, bg);
-
-    int avail = max_rows - 1;
-    int start = term_cnt > avail ? term_cnt - avail : 0;
-    int dy = wy;
-    for (int i = start; i < term_cnt; i++, dy += 16) {
-        for (int j = 0; j < TERM_COLS && term_lines[i][j]; j++)
-            chr(wx + j * 8, dy, term_lines[i][j], fg, bg);
-    }
-
-    int px = wx, py = wy + max_rows * 16 - 16;
-    txt(px, py, "> ", 0x00FF00, bg);
-    for (int j = 0; j < term_len; j++)
-        chr(px + 16 + j * 8, py, term_input[j], fg, bg);
-}
-
-/* ================================================================
-   CALCULATOR
-   ================================================================ */
-
-static int calc_val, calc_cur, calc_op;
-static char calc_disp[16];
-
-static void calc_disp_upd(void);
-
-#define CD(n) static void cc##n(void) { if (calc_cur < 9999999) calc_cur = calc_cur * 10 + n; calc_disp_upd(); }
-CD(0) CD(1) CD(2) CD(3) CD(4) CD(5) CD(6) CD(7) CD(8) CD(9)
-
-static void calc_disp_upd(void)
-{
-    if (calc_cur == 0) { calc_disp[0] = '0'; calc_disp[1] = 0; return; }
-    int v = calc_cur, p = 14;
-    calc_disp[15] = 0;
-    while (v && p >= 0) { calc_disp[p--] = '0' + (v % 10); v /= 10; }
-    int i = 0;
-    while (p + 1 + i <= 14) { calc_disp[i] = calc_disp[p + 1 + i]; i++; }
-    calc_disp[i] = 0;
-}
-
-static void ccE(void)
-{
-    if (calc_op == 1) calc_val += calc_cur;
-    else if (calc_op == 2) calc_val -= calc_cur;
-    else if (calc_op == 3) calc_val *= calc_cur;
-    else if (calc_op == 4 && calc_cur) calc_val /= calc_cur;
-    else calc_val = calc_cur;
-    calc_cur = calc_val; calc_op = 0; calc_disp_upd();
-}
-
-static void ccP(void) { ccE(); calc_val = calc_cur; calc_op = 1; calc_cur = 0; }
-static void ccS(void) { ccE(); calc_val = calc_cur; calc_op = 2; calc_cur = 0; }
-static void ccM(void) { ccE(); calc_val = calc_cur; calc_op = 3; calc_cur = 0; }
-static void ccD(void) { ccE(); calc_val = calc_cur; calc_op = 4; calc_cur = 0; }
-static void ccC(void) { calc_val = 0; calc_cur = 0; calc_op = 0; calc_disp_upd(); }
-
-static void calc_draw(void)
-{
-    if (calc_win < 0 || calc_win >= nw) return;
-    Win *w = &wins[calc_win];
-    int dx = w->x + 10, dy = w->y + 24;
-    rect(dx, dy, 220, 34, 0xFFFFFF);
-    border(dx, dy, 220, 34, 0x888888);
-    txt(dx + 8, dy + 9, calc_disp[0] ? calc_disp : "0", 0x000000, 0xFFFFFF);
-}
-
-/* ================================================================
-   MOUSE CURSOR + CLICK
-   ================================================================ */
-
-static const uint8_t curs_img[] = {
-    0x80, 0xC0, 0xA0, 0x90, 0x88, 0x84,
-    0x82, 0x81, 0x80, 0xA0, 0x50, 0x20
-};
-
-static void mouse_draw(void)
-{
-    int x = mouse_x, y = mouse_y;
-    for (int r = 0; r < 12 && y + r + 1 < fb_h; r++) {
-        uint8_t bits = curs_img[r];
-        for (int c = 0; c < 8 && x + c + 1 < fb_w; c++)
-            if (bits & (0x80 >> c))
-                sbuf[(y + r + 1) * (fb_pch / 4) + (x + c + 1)] = 0x000000;
-    }
-    for (int r = 0; r < 12 && y + r < fb_h; r++) {
-        uint8_t bits = curs_img[r];
-        for (int c = 0; c < 8 && x + c < fb_w; c++)
-            if (bits & (0x80 >> c))
-                sbuf[(y + r) * (fb_pch / 4) + (x + c)] = 0xFFFFFF;
-    }
-}
-
-static void mouse_click(void)
-{
-    int x = mouse_x, y = mouse_y;
-
-    if (menu_open) {
-        int mx = 2;
-        int my = fb_h - TB_H - menu_n * 24 - 4;
-        if (x >= mx && x < mx + MN_W && y >= my && y < my + menu_n * 24 + 4) {
-            int item = (y - my - 2) / 24;
-            if (item >= 0 && item < menu_n) {
-                if (item == 0) cb_new();
-                if (item == 1) cb_term();
-                if (item == 2) cb_about();
-                if (item == 3) cb_calc();
-                if (item == 4) cb_shutdown();
-            }
-        }
-        menu_open = 0; focus_mode = 0;
-        return;
-    }
-
-    if (y >= fb_h - TB_H) {
-        if (x < ST_W + 2) {
-            menu_open = 1; menu_focus = 0; focus_mode = 2;
-            return;
-        }
-        int bx = ST_W + 6;
-        for (int i = 0; i < nw; i++) {
-            int bw = s_len(wins[i].title) * 8 + 12;
-            if (bw > 140) bw = 140;
-            if (x >= bx && x < bx + bw) { act = i; focus_mode = 0; return; }
-            bx += bw + 2;
-        }
-        return;
-    }
-
-    for (int i = nw - 1; i >= 0; i--) {
-        Win *w = &wins[i];
-        int wx = w->x, wy = w->y, ww = w->w, wh = w->h;
-        if (x < wx || x >= wx + ww || y < wy || y >= wy + wh) continue;
-        act = i; focus_mode = 0;
-
-        if (x >= wx + ww - 18 && x < wx + ww - 3 &&
-            y >= wy + 3 && y < wy + 18) {
-            wclose(i); return;
-        }
-        if (y >= wy + 2 && y < wy + 20) {
-            mouse_drag = 1;
-            mouse_drag_win = i;
-            mouse_drag_ox = x - wx;
-            mouse_drag_oy = y - wy;
-            return;
-        }
-        for (int j = 0; j < w->nb; j++) {
-            Btn *b = &w->btns[j];
-            int bx = wx + 2 + b->x, by = wy + 20 + b->y;
-            if (x >= bx && x < bx + b->w && y >= by && y < by + b->h) {
-                if (b->cb) b->cb();
-                return;
-            }
-        }
-        return;
-    }
-}
-
-/* ================================================================
-   CALLBACKS
-   ================================================================ */
-
-static int ccount;
-static void cb_close(void) { if (act >= 0 && act < nw) wclose(act); }
-static void cb_shutdown(void) { run = 0; }
-
-static void cb_new(void)
-{
-    ccount++;
-    char title[16];
-    int i;
-    for (i = 0; "Window"[i]; i++) title[i] = "Window"[i];
-    title[i] = '0' + ccount; title[++i] = 0;
-    int wi = wnew(title, 80 + (ccount % 6) * 30, 80 + (ccount % 5) * 30,
-                  260, 140);
-    wbtn(wi, "Close", 100, 80, 60, 26, cb_close);
-}
-
-static void cb_about(void)
-{
-    about_win = wnew("About", 230, 180, 280, 140);
-    wbtn(about_win, "OK", 110, 90, 60, 26, cb_close);
-}
-
-static void cb_term(void)
-{
-    term_win = wnew("Terminal", 120, 80, 580, 400);
-}
-
-static void cb_calc(void)
-{
-    calc_win = wnew("Calculator", 200, 140, 260, 290);
-    wins[calc_win].bg = 0xD4D4D4;
-    int bx, by;
-    /* Row 1: 7 8 9 / */
-    by = 50; bx = 8;
-    wbtn(calc_win, "7", bx, by, 52, 34, cc7);
-    wbtn(calc_win, "8", bx+58, by, 52, 34, cc8);
-    wbtn(calc_win, "9", bx+116, by, 52, 34, cc9);
-    wbtn(calc_win, "/", bx+174, by, 52, 34, ccD);
-    /* Row 2: 4 5 6 * */
-    by = 88;
-    wbtn(calc_win, "4", bx, by, 52, 34, cc4);
-    wbtn(calc_win, "5", bx+58, by, 52, 34, cc5);
-    wbtn(calc_win, "6", bx+116, by, 52, 34, cc6);
-    wbtn(calc_win, "*", bx+174, by, 52, 34, ccM);
-    /* Row 3: 1 2 3 - */
-    by = 126;
-    wbtn(calc_win, "1", bx, by, 52, 34, cc1);
-    wbtn(calc_win, "2", bx+58, by, 52, 34, cc2);
-    wbtn(calc_win, "3", bx+116, by, 52, 34, cc3);
-    wbtn(calc_win, "-", bx+174, by, 52, 34, ccS);
-    /* Row 4: C 0 = + */
-    by = 164;
-    wbtn(calc_win, "C", bx, by, 52, 34, ccC);
-    wbtn(calc_win, "0", bx+58, by, 52, 34, cc0);
-    wbtn(calc_win, "=", bx+116, by, 52, 34, ccE);
-    wbtn(calc_win, "+", bx+174, by, 52, 34, ccP);
+    vbe_w(4, 0x00);
+    vbe_w(1, w);
+    vbe_w(2, h);
+    vbe_w(3, bpp);
+    vbe_w(4, 0x41);
 }
 
 /* ================================================================
@@ -820,36 +115,35 @@ static int fb_init(void)
         fb_addr = 0xE0000000;
 
     vbe_set(800, 600, 32);
-
-    fb   = (uint32_t*)fb_addr;
-    sbuf = shadow;
-    fb_w = 800;
-    fb_h = 600;
-    fb_pch = 800 * 4;
+    fb_init_ptr((uint32_t*)fb_addr, 800, 600, 800 * 4);
     return 0;
 }
+
+/* ================================================================
+   BOOT SCREEN
+   ================================================================ */
 
 static void boot_screen(void)
 {
     uint32_t bg = 0x0A0A1A;
-    rect(0, 0, fb_w, fb_h, bg);
+    fb_clear(bg);
 
     char *title = "LunarSnow OS";
     int tx = (fb_w - s_len(title) * 8) / 2;
-    txt(tx, fb_h / 2 - 50, title, 0xE6E6F0, bg);
+    fb_txt(tx, fb_h / 2 - 50, title, 0xE6E6F0, bg);
 
     char *sub = "Booting...";
     int sx = (fb_w - s_len(sub) * 8) / 2;
-    txt(sx, fb_h / 2 - 20, sub, 0x8888AA, bg);
+    fb_txt(sx, fb_h / 2 - 20, sub, 0x8888AA, bg);
 
     int pbx = fb_w / 2 - 100, pby = fb_h / 2 + 10;
-    rect(pbx, pby, 200, 14, 0x1A1A3A);
-    border(pbx, pby, 200, 14, 0x3C50A0);
-    flip();
+    fb_rect(pbx, pby, 200, 14, 0x1A1A3A);
+    fb_border(pbx, pby, 200, 14, 0x3C50A0);
+    fb_flip();
 
     for (int p = 0; p <= 100; p += 2) {
-        rect(pbx + 2, pby + 2, (196 * p) / 100, 10, 0x3C50A0);
-        flip();
+        fb_rect(pbx + 2, pby + 2, (196 * p) / 100, 10, 0x3C50A0);
+        fb_flip();
         for (volatile int d = 0; d < 80000; d++);
     }
 
@@ -868,14 +162,23 @@ void kmain(uint32_t magic, void *mbinfo)
     boot_screen();
     mouse_init();
 
+    /* Build dynamic menu */
+    gui_menu_add("New Window", cb_new);
+    gui_menu_add("Terminal",   cb_term);
+    gui_menu_add("About",      cb_about);
+    gui_menu_add("Calculator", cb_calc);
+    for (int i = 0; i < progs_n; i++) gui_menu_add(progs[i].name, progs[i].init);
+    gui_menu_add("Shutdown",   cb_shutdown);
+
     run = 1;
 
     while (run) {
         int prev_btn = mouse_btn;
         kb_poll();
 
+        /* Mouse button transition */
         if ((mouse_btn & 1) && !(prev_btn & 1))
-            mouse_click();
+            gui_mouse_click();
         if (mouse_drag && !(mouse_btn & 1))
             mouse_drag = 0;
         if (mouse_drag)
@@ -883,17 +186,18 @@ void kmain(uint32_t magic, void *mbinfo)
             wins[mouse_drag_win].y = mouse_y - mouse_drag_oy;
 
         int key = kb_pop();
-        if (key < 0) goto after_kb;
+        if (key < 0) goto render_frame;
 
-        if (act == term_win && term_win >= 0 && key != '\t' && key != 27) {
-            if (key == KEY_UP || key == KEY_DOWN) {}
-            else term_key(key);
-            goto after_kb;
+        /* App key routing */
+        if (act == app_win && app_on_key && key != '\t' && key != 27) {
+            app_on_key(key);
+            goto render_frame;
         }
 
+        /* Keyboard navigation */
         if (key == '\t') {
             if (menu_open) {
-                menu_focus = (menu_focus + 1) % menu_n;
+                menu_focus = (menu_focus + 1) % gui_menu_count();
             } else if (focus_mode == 0) {
                 if (nw > 0 && wins[act].nb > 0)
                     wins[act].fc = (wins[act].fc + 1) % wins[act].nb;
@@ -906,11 +210,7 @@ void kmain(uint32_t magic, void *mbinfo)
         }
         if (key == '\n' || key == ' ') {
             if (menu_open) {
-                if (menu_focus == 0) cb_new();
-                if (menu_focus == 1) cb_term();
-                if (menu_focus == 2) cb_about();
-                if (menu_focus == 3) cb_calc();
-                if (menu_focus == 4) cb_shutdown();
+                gui_menu_exec(menu_focus);
                 menu_open = 0; focus_mode = 0;
             } else if (focus_mode == 1) {
                 menu_open = 1; menu_focus = 0; focus_mode = 2;
@@ -922,19 +222,19 @@ void kmain(uint32_t magic, void *mbinfo)
         if (key == 27) {
             if (menu_open) { menu_open = 0; focus_mode = 1; }
             else if (focus_mode != 0) { focus_mode = 0; }
-            else if (nw > 1) wclose(act);
+            else if (nw > 1) gui_wclose(act);
         }
         if (key == KEY_UP && menu_open)
-            menu_focus = (menu_focus - 1 + menu_n) % menu_n;
+            menu_focus = (menu_focus - 1 + gui_menu_count()) % gui_menu_count();
         if (key == KEY_DOWN && menu_open)
-            menu_focus = (menu_focus + 1) % menu_n;
+            menu_focus = (menu_focus + 1) % gui_menu_count();
         if (key == KEY_SUPER) {
             if (menu_open) { menu_open = 0; focus_mode = 0; }
             else { menu_open = 1; menu_focus = 0; focus_mode = 2; }
         }
-    after_kb: ;
 
-        render();
+    render_frame:
+        gui_render();
     }
 
     outw(0x604, 0x2000);

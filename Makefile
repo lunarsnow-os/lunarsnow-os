@@ -5,7 +5,7 @@ CFLAGS = -m32 -ffreestanding -nostdlib -Wall -Wextra -O2
 ASFLAGS = --32
 LDFLAGS = -m elf_i386 -T linker.ld
 
-OBJS = boot.o kernel.o
+OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
 
 all: lunarsnow.elf
 
@@ -20,6 +20,7 @@ lunarsnow.elf: $(OBJS) linker.ld
 
 clean:
 	rm -f *.o lunarsnow.elf lunarsnow.iso
+	rm -f progs/*.o
 	rm -rf iso/
 
 run: lunarsnow.elf
