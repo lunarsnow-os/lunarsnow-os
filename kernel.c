@@ -637,7 +637,7 @@ static void calc_draw(void)
 {
     if (calc_win < 0 || calc_win >= nw) return;
     Win *w = &wins[calc_win];
-    int dx = w->x + 10, dy = w->y + 8;
+    int dx = w->x + 10, dy = w->y + 24;
     rect(dx, dy, 220, 34, 0xFFFFFF);
     border(dx, dy, 220, 34, 0x888888);
     txt(dx + 8, dy + 9, calc_disp[0] ? calc_disp : "0", 0x000000, 0xFFFFFF);
