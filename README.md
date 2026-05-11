@@ -2,6 +2,32 @@
 
 Sistema gráfico bare-metal que boota diretamente no QEMU (sem SO).
 
+## Compilar
+
+### Pré-requisitos
+
+| Programa | Pacote (Debian/Ubuntu) | Pacote (Arch) | Pacote (Fedora) |
+|---|---|---|
+| `gcc` + `ld` (i386) | `gcc` `binutils` | `gcc` `binutils` | `gcc` `binutils` |
+| `as` (assembler) | `binutils` | `binutils` | `binutils` |
+| `grub2-mkrescue` | `grub2-common` `xorriso` | `grub` `libisoburn` | `grub2-tools` `xorriso` |
+| `qemu-system-x86_64` (teste) | `qemu-system-x86` | `qemu-system-x86` | `qemu-system-x86` |
+
+### Build & Run
+
+```sh
+make            # compila lunarsnow.elf (kernel multiboot)
+make run        # QEMU com -kernel
+make iso        # gera ISO bootável (lunarsnow.iso)
+make run-iso    # QEMU com ISO
+make clean      # limpa objetos
+```
+
+### Hardware real
+
+Grava `lunarsnow.iso` numa USB/CD e boota via BIOS. Requer placa gráfica com
+VESA BIOS (suportada por GRUB) — funciona em Pentium II, III, IV e superior.
+
 ## Estrutura
 
 ```
@@ -10,10 +36,15 @@ linker.ld           → Linker script (carrega em 1 MB)
 kernel.c            → Inicialização: PCI, VBE, CMOS, boot screen, event loop
 ├── fb.c / fb.h         → Framebuffer: pixel, rect, texto, flip (double buffer)
 ├── input.c / input.h   → Teclado + rato PS/2
-├── gui.c / gui.h       → Gestor de janelas, botões, taskbar, menu, cursor
-├── apps.c / apps.h     → Programas built-in (terminal, calculadora, about)
+├── gui.c / gui.h       → Gestor de janelas, botões, taskbar, relógio, menu, cursor
+├── apps.c / apps.h     → Infraestrutura: terminal, calculadora, msgbox, callbacks
 ├── progs.c / progs.h   → Registo de programas externos
-├── progs/              → Programas externos (cada um no seu .c)
+├── progs/              → Programas (cada um no seu .c)
+│   ├── about.c         → Janela About (CPU, RAM, uptime)
+│   ├── hello.c         → Hello World demo
+│   ├── inputname.c     → Input Name demo
+│   ├── notepad.c       → Bloco de Notas
+│   └── msgboxdemo.c    → Demonstração de MessageBox
 └── lunarsnow.h         → SDK umbrella (inclui tudo)
 ```
 
@@ -47,16 +78,29 @@ gui_wbtn(win, "texto", x, y, w, h, cb)    → adiciona botão
 gui_wclose(win)                            → fecha janela
 gui_render()                               → desenha tudo
 gui_mouse_click()                          → processa clique do rato
+gui_set_dirty()                            → força redesenho total
 
 wins[win].bg = cor;                        → muda cor de fundo
+wins[win].draw = minha_func;               → callback de desenho (recebe win)
+wins[win].on_key = minha_func;             → callback de teclado (recebe key)
 ```
 
-### Ganchos para apps
+### MessageBox (`apps.h`)
 ```c
-app_win        → índice da janela ativa (-1 se nenhuma)
-app_on_key     → função chamada quando tecla é pressionada (ou 0)
-app_on_draw    → função chamada para desenho extra (ou 0)
+msgbox("título", "mensagem");    → abre janela popup com OK
 ```
+
+## Programas Atuais
+
+| Programa | Ficheiro | Descrição |
+|---|---|---|
+| Terminal | built-in (`apps.c`) | Linha de comandos com `help`, `echo`, `about`, `cls`, `time`, `ver`, `shutdown`, `newwin` |
+| Calculadora | built-in (`apps.c`) | Operações básicas (+, -, ×, ÷) |
+| Notepad | `progs/notepad.c` | Editor de texto (72 col × 256 linhas, scroll automático) |
+| About | `progs/about.c` | Informações do sistema (CPU, vendor, RAM, uptime) |
+| Hello Demo | `progs/hello.c` | Exemplo mínimo |
+| Input Name | `progs/inputname.c` | Exemplo com teclado |
+| Message Demo | `progs/msgboxdemo.c` | Demonstração de MessageBox |
 
 ## Como criar uma app externa
 
@@ -65,55 +109,50 @@ app_on_draw    → função chamada para desenho extra (ou 0)
 ```c
 #include "../lunarsnow.h"
 
-static void draw(void)
+static void draw(int wi)
 {
-    int wi = app_win;
-    if (wi < 0) return;
-    fb_txt(wins[wi].x + 10, wins[wi].y + 30, "Minha App!", C_TTT, wins[wi].bg);
+    Win *w = &wins[wi];
+    fb_txt(w->x + 10, w->y + 30, "Minha App!", C_TTT, w->bg);
 }
 
 void prog_minha_app(void)
 {
-    app_on_key = 0; app_on_draw = 0;
     int wi = gui_wnew("Minha App", 100, 100, 260, 140);
     gui_wbtn(wi, "Fechar", 100, 80, 60, 26, app_close);
-    app_win = wi;
-    app_on_draw = draw;
+    wins[wi].draw = draw;
 }
 ```
 
 ### 2. Regista em `progs.c`
 
 ```c
-extern void prog_minha_app(void);    /* <-- declara */
+extern void prog_minha_app(void);
 
 Prog progs[] = {
-    {"Hello Demo",  prog_hello},
-    {"Minha App",   prog_minha_app}, /* <-- regista */
+    {"Hello Demo",   prog_hello},
+    {"Minha App",    prog_minha_app},
 };
 ```
 
 ### 3. `make` e ta pronto
 
-O menu (Start) e a navegação por teclado atualizam-se automaticamente.
+O menu (Start) atualiza-se automaticamente.
 
 ### Apps com teclado
 
-Segue o padrão do terminal:
-
 ```c
-static void minha_key(int key)
+static void minha_key(int k)
 {
-    if (key >= 32 && key <= 126) { /* digitação */ }
-    if (key == '\n') { /* executar */ }
+    if (k >= 32 && k <= 126) { /* digitação */ }
+    if (k == '\n') { /* executar */ }
 }
 
 void prog_minha_app(void)
 {
-    ...
-    app_on_key = minha_key;
-    app_on_draw = minha_draw;
+    int wi = gui_wnew("App", 100, 100, 400, 300);
+    wins[wi].on_key = minha_key;
+    wins[wi].draw = minha_draw;
 }
 ```
 
-O kernel roteia as teclas automaticamente quando `act == app_win`.
+O kernel roteia as teclas automaticamente para a janela ativa (`act`).

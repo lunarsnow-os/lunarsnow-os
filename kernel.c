@@ -428,7 +428,6 @@ void kmain(uint32_t magic, void *mbinfo)
     /* Build dynamic menu */
     gui_menu_add("New Window", cb_new);
     gui_menu_add("Terminal",   cb_term);
-    gui_menu_add("About",      cb_about);
     gui_menu_add("Calculator", cb_calc);
     for (int i = 0; i < progs_n; i++) gui_menu_add(progs[i].name, progs[i].init);
     gui_menu_add("Reboot",     cb_reboot);
