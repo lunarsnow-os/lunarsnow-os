@@ -113,7 +113,7 @@ static void mouse_process(uint8_t data)
         if (mouse_pkt[0] & 0x10) dx -= 256;
         if (mouse_pkt[0] & 0x20) dy -= 256;
         mouse_btn = mouse_pkt[0] & 3;
-        mouse_x += dx; mouse_y -= dy;
+        mouse_x += dx * 2; mouse_y -= dy * 2;
         if (mouse_x < 0) mouse_x = 0;
         if (mouse_x >= fb_w) mouse_x = fb_w - 1;
         if (mouse_y < 0) mouse_y = 0;
@@ -148,6 +148,14 @@ void mouse_init(void)
     outb(0x64, 0xD4); mouse_wait_wr();
     outb(0x60, 0xF6); mouse_wait_rd();
     inb(0x60);                         /* discard ACK */
+
+    /* Set sample rate to 200/sec for smoother tracking */
+    outb(0x64, 0xD4); mouse_wait_wr();
+    outb(0x60, 0xF3); mouse_wait_rd();
+    inb(0x60);
+    outb(0x64, 0xD4); mouse_wait_wr();
+    outb(0x60, 0xC8); mouse_wait_rd();
+    inb(0x60);
 
     /* Enable data reporting */
     outb(0x64, 0xD4); mouse_wait_wr();
