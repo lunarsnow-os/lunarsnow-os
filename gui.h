@@ -16,6 +16,8 @@ typedef struct {
     int nb, fc;
     void (*draw)(int wi);
     void (*on_key)(int k);
+    void (*on_click)(int wi);
+    void *userdata;
 } Win;
 
 /* Window management */

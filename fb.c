@@ -136,3 +136,9 @@ void mcpy(void *d, const void *s, int n)
     const unsigned char *cs = s;
     while (n--) *cd++ = *cs++;
 }
+
+int s_cmp(const char *a, const char *b)
+{
+    while (*a && *a == *b) { a++; b++; }
+    return *(unsigned char*)a - *(unsigned char*)b;
+}

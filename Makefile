@@ -19,7 +19,7 @@ lunarsnow.elf: $(OBJS) linker.ld
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f *.o lunarsnow.elf lunarsnow.iso
+	rm -f *.o lunarsnow.elf lunarsnow.iso initrd.tar
 	rm -f progs/*.o
 	rm -rf iso/
 
@@ -39,10 +39,14 @@ iso: lunarsnow.iso
 
 GRUB_MKRESCUE = $(shell command -v grub2-mkrescue || command -v grub-mkrescue || echo grub-mkrescue)
 
-lunarsnow.iso: lunarsnow.elf
+initrd.tar: $(wildcard initrd/*)
+	tar cf $@ -C initrd $(notdir $^)
+
+lunarsnow.iso: lunarsnow.elf initrd.tar
 	mkdir -p iso/boot/grub
 	cp lunarsnow.elf iso/boot/
-	printf 'set timeout=0\nset default=0\nset gfxpayload=800x600x32\nmenuentry "LunarSnow OS" {\n  multiboot2 /boot/lunarsnow.elf\n  boot\n}' > iso/boot/grub/grub.cfg
+	cp initrd.tar iso/boot/
+	printf 'set timeout=0\nset default=0\nset gfxpayload=800x600x32\nmenuentry "LunarSnow OS" {\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}' > iso/boot/grub/grub.cfg
 	$(GRUB_MKRESCUE) -o lunarsnow.iso iso/
 
 run-iso: lunarsnow.iso

@@ -40,7 +40,8 @@ int gui_wnew(const char *t, int x, int y, int w, int h)
     s_cpy(wins[i].title, t, 24);
     wins[i].bg = C_WBG; wins[i].tb = C_TAC;
     wins[i].nb = 0; wins[i].fc = 0;
-    wins[i].draw = 0; wins[i].on_key = 0;
+    wins[i].draw = 0; wins[i].on_key = 0; wins[i].on_click = 0;
+    wins[i].userdata = 0;
     act = i; return i;
 }
 
@@ -225,6 +226,8 @@ void gui_mouse_click(void)
                 return;
             }
         }
+        /* Custom click handler (e.g. file list) */
+        if (w->on_click) { w->on_click(i); return; }
         return;
     }
 }

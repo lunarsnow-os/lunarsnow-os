@@ -1,0 +1,15 @@
+Welcome to LunarSnow OS x64 Edition
+
+Boot sequence:
+1. BIOS/UEFI
+2. GRUB (multiboot2)
+3. Kernel entry (64-bit)
+4. Framebuffer init
+5. Memory detection
+6. PCI enumeration
+7. PS/2 mouse init
+8. CPU detection
+9. RTC init
+10. GUI startup
+
+System ready.

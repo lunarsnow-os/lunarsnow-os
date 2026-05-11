@@ -17,12 +17,10 @@ static void draw(int wi)
     int wx = w->x + 12, wy = w->y + 28;
     char buf[64]; int p;
 
-    /* Title */
     fb_txt(wx, wy, "Control Panel", C_TTT, w->bg);
     fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
     wy += 34;
 
-    /* System section */
     fb_txt(wx, wy, "System", 0x5A7AC0, w->bg); wy += 18;
 
     extern int cpu_ok;
@@ -72,8 +70,25 @@ static void draw(int wi)
         fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 16;
     }
 
-    /* Video section */
+    /* Initrd section */
     wy += 6;
+    fb_txt(wx, wy, "Initrd", 0x5A7AC0, w->bg); wy += 18;
+
+    extern uint8_t *initrd_start;
+    extern uint32_t initrd_size;
+    if (initrd_start) {
+        p = 0;
+        const char *ir = "Size: ";
+        while (*ir) buf[p++] = *ir++;
+        str_int(buf + p, initrd_size);
+        while (buf[p]) p++;
+        buf[p++] = ' '; buf[p++] = 'b'; buf[p] = 0;
+        fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 18;
+    } else {
+        fb_txt(wx + 8, wy, "Not loaded", C_LBL, w->bg); wy += 18;
+    }
+
+    /* Video section */
     fb_txt(wx, wy, "Video", 0x5A7AC0, w->bg); wy += 18;
 
     extern int fb_w, fb_h, fb_bpp;
@@ -87,7 +102,6 @@ static void draw(int wi)
     buf[p++] = 'b'; buf[p++] = 'p'; buf[p++] = 'p'; buf[p] = 0;
     fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 16;
 
-    /* Version */
     wy += 6;
     fb_txt(wx, wy, "About", 0x5A7AC0, w->bg); wy += 18;
     fb_txt(wx + 8, wy, "LunarSnow OS v0.2-alpha x64", C_LBL, w->bg); wy += 16;
@@ -96,7 +110,7 @@ static void draw(int wi)
 
 void prog_controlpanel(void)
 {
-    int wi = gui_wnew("Control Panel", (fb_w - 400) / 2, 60, 400, 360);
-    gui_wbtn(wi, "Close", 170, 310, 60, 26, app_close);
+    int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 380);
+    gui_wbtn(wi, "Close", 180, 330, 60, 26, app_close);
     wins[wi].draw = draw;
 }

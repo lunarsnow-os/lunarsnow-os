@@ -208,7 +208,6 @@ static void parse_memory(uint32_t magic, void *mbinfo)
             uint32_t total_size = *(uint32_t*)(tag + 4);
             uint8_t *p = tag + 16;
             while ((uint32_t)(p - tag) < total_size) {
-                uint64_t base  = *(uint64_t*)(p + 0);
                 uint64_t len   = *(uint64_t*)(p + 8);
                 uint32_t type  = *(uint32_t*)(p + 16);
                 if (type == 1) total_ram += len;
@@ -223,6 +222,104 @@ static void parse_memory(uint32_t magic, void *mbinfo)
             uint32_t upper = *(uint32_t*)(tag + 12);
             total_ram = (uint64_t)(lower + upper) * 1024;
         }
+    }
+}
+
+/* ================================================================
+   INITRD (tar archive loaded via multiboot2 module)
+   ================================================================ */
+
+uint8_t *initrd_start;
+uint32_t initrd_size;
+
+typedef struct {
+    char name[100];
+    char mode[8];
+    char uid[8];
+    char gid[8];
+    char size[12];
+    char mtime[12];
+    char chksum[8];
+    char typeflag;
+    char linkname[100];
+    char magic[6];
+    char version[2];
+    char uname[32];
+    char gname[32];
+    char devmajor[8];
+    char devminor[8];
+    char prefix[155];
+} tar_hdr_t;
+
+static int oct2int(const char *s, int n)
+{
+    int r = 0;
+    for (int i = 0; i < n && s[i]; i++) {
+        if (s[i] < '0' || s[i] > '7') break;
+        r = (r << 3) | (s[i] - '0');
+    }
+    return r;
+}
+
+static void parse_initrd(uint32_t magic, void *mbinfo)
+{
+    if (magic != 0x36D76289) return;
+    uint8_t *tag = mb2_find_tag(mbinfo, 3);
+    if (!tag) return;
+    uint32_t start = *(uint32_t*)(tag + 8);
+    uint32_t end   = *(uint32_t*)(tag + 12);
+    initrd_start   = (uint8_t*)(uintptr_t)start;
+    initrd_size    = end - start;
+}
+
+/* Find file by name in initrd tar archive.
+   Returns pointer to file data, writes size to *size_out.
+   Returns 0 if not found. */
+uint8_t *file_read(const char *name, uint32_t *size_out)
+{
+    if (!initrd_start) return 0;
+    uint8_t *p = initrd_start;
+    uint8_t *end = initrd_start + initrd_size;
+
+    while (p + 512 <= end) {
+        tar_hdr_t *h = (tar_hdr_t *)p;
+        if (h->name[0] == 0) break;
+        /* magic is "ustar" (may be padded with spaces instead of null) */
+        if (h->magic[0] != 'u' || h->magic[1] != 's' || h->magic[2] != 't' ||
+            h->magic[3] != 'a' || h->magic[4] != 'r') break;
+
+        int fsize = oct2int(h->size, 12);
+        int padded = (fsize + 511) & ~511;
+
+        const char *entry = h->name;
+        /* Strip leading ./ from tar entry names */
+        if (entry[0] == '.' && entry[1] == '/') entry += 2;
+
+        if (s_cmp(entry, name) == 0) {
+            if (size_out) *size_out = fsize;
+            return p + 512;
+        }
+        p += 512 + padded;
+    }
+    return 0;
+}
+
+void file_iterate(void (*cb)(const char *name, uint32_t size))
+{
+    if (!initrd_start) return;
+    uint8_t *p = initrd_start;
+    uint8_t *end = initrd_start + initrd_size;
+    while (p + 512 <= end) {
+        tar_hdr_t *h = (tar_hdr_t *)p;
+        if (h->name[0] == 0) break;
+        if (h->magic[0] != 'u' || h->magic[1] != 's' || h->magic[2] != 't' ||
+            h->magic[3] != 'a' || h->magic[4] != 'r') break;
+        int fsize = oct2int(h->size, 12);
+        int padded = (fsize + 511) & ~511;
+        const char *entry = h->name;
+        if (entry[0] == '.' && entry[1] == '/') entry += 2;
+        cb(entry, fsize);
+        p += 512 + padded;
     }
 }
 
@@ -311,9 +408,10 @@ static void boot_screen(void)
         "PS/2 mouse",
         "CPU detection",
         "RTC",
+        "Initrd",
     };
-    int pcts[] = { 10, 25, 40, 55, 70, 85, 100 };
-    int n_msgs = 7;
+    int pcts[] = { 10, 25, 40, 55, 70, 85, 95, 100 };
+    int n_msgs = 8;
 
     for (int p = 0; p <= 100; p++) {
         int bw = ((pbw - 4) * p) / 100;
@@ -484,6 +582,7 @@ void kmain(uint32_t magic, void *mbinfo)
 
     detect_cpu();
     parse_memory(magic, mbinfo);
+    parse_initrd(magic, mbinfo);
     {
         int h, m, s;
         rtc_read(&h, &m, &s);

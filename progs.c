@@ -7,6 +7,7 @@ extern void prog_notepad(void);
 extern void prog_msgbox_demo(void);
 extern void prog_about(void);
 extern void prog_controlpanel(void);
+extern void prog_filemgr(void);
 
 Prog progs[] = {
     {"Hello Demo", prog_hello},
@@ -15,6 +16,7 @@ Prog progs[] = {
     {"Message Demo", prog_msgbox_demo},
     {"About", prog_about},
     {"Control Panel", prog_controlpanel},
+    {"File Manager", prog_filemgr},
 };
 
 int progs_n = sizeof(progs) / sizeof(progs[0]);

@@ -1,0 +1,3 @@
+LunarSnow OS v0.2-alpha x64
+Build: 2026-05-11
+Kernel: x86_64
