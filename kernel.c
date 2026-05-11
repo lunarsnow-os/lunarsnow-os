@@ -267,26 +267,62 @@ static void boot_screen(void)
     uint32_t bg = 0x0A0A1A;
     fb_clear(bg);
 
+    uint32_t panel_c = 0x0F0F24;
+    int cx = fb_w / 2;
+    int pw = 380, ph = 340;
+    int px = cx - pw / 2, py = fb_h / 2 - ph / 2;
+    fb_rect(px, py, pw, ph, panel_c);
+    fb_border(px, py, pw, ph, 0x3C50A0);
+
     char *title = "LunarSnow OS";
-    int tx = (fb_w - s_len(title) * 8) / 2;
-    fb_txt(tx, fb_h / 2 - 50, title, 0xE6E6F0, bg);
+    int tx = cx - s_len(title) * 4;
+    fb_txt(tx, py + 30, title, 0xE6E6F0, panel_c);
 
-    char *sub = "Booting...";
-    int sx = (fb_w - s_len(sub) * 8) / 2;
-    fb_txt(sx, fb_h / 2 - 20, sub, 0x8888AA, bg);
+    char *ver = "v0.2-alpha";
+    int vx = cx - s_len(ver) * 4;
+    fb_txt(vx, py + 54, ver, 0x5A5A7A, panel_c);
 
-    int pbx = fb_w / 2 - 100, pby = fb_h / 2 + 10;
-    fb_rect(pbx, pby, 200, 14, 0x1A1A3A);
-    fb_border(pbx, pby, 200, 14, 0x3C50A0);
-    fb_flip();
+    int pbx = px + 30, pby = py + 85;
+    int pbw = pw - 60;
+    fb_rect(pbx, pby, pbw, 14, 0x1A1A3A);
+    fb_border(pbx, pby, pbw, 14, 0x3C50A0);
 
-    for (int p = 0; p <= 100; p += 2) {
-        fb_rect(pbx + 2, pby + 2, (196 * p) / 100, 10, 0x3C50A0);
+    int lx = px + 20, ly = py + 120;
+    int next_msg = 0;
+    const char *msgs[] = {
+        "Bootloader (multiboot)",
+        "Framebuffer",
+        "Memory map",
+        "PCI bus",
+        "PS/2 mouse",
+        "CPU detection",
+        "RTC",
+    };
+    int pcts[] = { 10, 25, 40, 55, 70, 85, 100 };
+    int n_msgs = 7;
+
+    for (int p = 0; p <= 100; p++) {
+        int bw = ((pbw - 4) * p) / 100;
+        fb_rect(pbx + 2, pby + 2, bw, 10, 0x3C50A0);
+        if (next_msg < n_msgs && p >= pcts[next_msg]) {
+            fb_txt(lx + 10, ly, msgs[next_msg], 0x8888AA, panel_c);
+            fb_txt(lx - 10, ly, ">", 0x3C50A0, panel_c);
+            ly += 18;
+            next_msg++;
+        }
         fb_flip();
-        for (volatile int d = 0; d < 80000; d++);
+        for (volatile int d = 0; d < 40000; d++);
     }
 
-    for (volatile int d = 0; d < 500000; d++);
+    int h, m, s, t0;
+    rtc_read(&h, &m, &s);
+    t0 = h * 3600 + m * 60 + s;
+    for (;;) {
+        rtc_read(&h, &m, &s);
+        int t = h * 3600 + m * 60 + s;
+        if (t < t0) t += 86400;
+        if (t - t0 >= 2) break;
+    }
 }
 
 /* ================================================================
@@ -458,6 +494,12 @@ void kmain(uint32_t magic, void *mbinfo)
         if (key >= 0) {
             need_render = 1;
 
+            /* Global shortcuts */
+            if (key == KEY_F4 && kb_mod_alt) {
+                if (nw > 0) gui_wclose(act);
+                goto render_choice;
+            }
+
             /* App key routing — per-window */
             if (act >= 0 && act < nw && wins[act].on_key && key != '\t' && key != 27) {
                 wins[act].on_key(key);
@@ -523,6 +565,22 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     if (run == -1) {
+        /* Reboot animation */
+        fb_clear(0x0A0A1A);
+        uint32_t pc = 0x0F0F24;
+        int cx = fb_w / 2, px = cx - 150, py = fb_h / 2 - 60;
+        fb_rect(px, py, 300, 120, pc);
+        fb_border(px, py, 300, 120, 0x3C50A0);
+        fb_txt(cx - 50, py + 20, "Rebooting...", 0xE6E6F0, pc);
+        fb_rect(px + 20, py + 60, 260, 14, 0x1A1A3A);
+        fb_border(px + 20, py + 60, 260, 14, 0x3C50A0);
+        for (int p = 0; p <= 100; p++) {
+            fb_rect(px + 22, py + 62, (256 * p) / 100, 10, 0x3C50A0);
+            fb_flip();
+            for (volatile int d = 0; d < 15000; d++);
+        }
+        for (volatile int d = 0; d < 100000; d++);
+
         fb_clear(0x000000);
         int dy = 10;
         #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
@@ -540,6 +598,30 @@ void kmain(uint32_t magic, void *mbinfo)
         for (;;) asm("hlt");
         #undef DBG
     }
+
+    /* Shutdown animation */
+    fb_clear(0x0A0A1A);
+    uint32_t pc = 0x0F0F24;
+    int cx = fb_w / 2, px = cx - 150, py = fb_h / 2 - 60;
+    fb_rect(px, py, 300, 120, pc);
+    fb_border(px, py, 300, 120, 0x3C50A0);
+    fb_txt(cx - 46, py + 20, "Shutting down...", 0xE6E6F0, pc);
+    fb_rect(px + 20, py + 60, 260, 14, 0x1A1A3A);
+    fb_border(px + 20, py + 60, 260, 14, 0x3C50A0);
+    for (int p = 0; p <= 100; p++) {
+        fb_rect(px + 22, py + 62, (256 * p) / 100, 10, 0x3C50A0);
+        fb_flip();
+        for (volatile int d = 0; d < 15000; d++);
+    }
+    /* Fade to black */
+    for (int bright = 0x3C50A0; bright > 0x0A0A1A; ) {
+        bright = ((bright & 0xFEFEFE) >> 1) & 0x7F7F7F;
+        fb_rect(px, py, 300, 120, bright);
+        fb_flip();
+        for (volatile int d = 0; d < 30000; d++);
+    }
+    for (volatile int d = 0; d < 100000; d++);
+
     fb_clear(0x000000);
     int dy = 10;
     #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)

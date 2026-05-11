@@ -18,6 +18,7 @@ int mouse_x, mouse_y, mouse_btn;
 #define KB_D 0x60
 
 static int shift;
+int kb_mod_alt;
 
 static const char kbm[128] = {
     0,27,'1','2','3','4','5','6','7','8','9','0','-','=',8,
@@ -65,14 +66,18 @@ void kb_poll(void)
         if (data & 0x80) {
             uint8_t mk = data & 0x7F;
             if (mk == 0x2A || mk == 0x36) shift = 0;
+            if (mk == 0x38) kb_mod_alt = 0;
             ext_key = 0;
         } else {
             if (data == 0x2A || data == 0x36) { shift = 1; ext_key = 0; }
+            else if (data == 0x38) { kb_mod_alt = 1; ext_key = 0; }
             else if (ext_key) {
                 if (data == 0x48) kb_push(KEY_UP);
                 if (data == 0x50) kb_push(KEY_DOWN);
                 if (data == 0x5B) kb_push(KEY_SUPER);
                 ext_key = 0;
+            } else if (data == 0x3E) {
+                kb_push(KEY_F4);
             } else {
                 char c = shift ? kbs[data] : kbm[data];
                 if (c) kb_push(c);

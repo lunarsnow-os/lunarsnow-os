@@ -10,7 +10,7 @@ A bare-metal graphical system that boots directly in QEMU (no OS).
 |---|---|---|---|
 | `gcc` + `ld` (i386) | `gcc` `binutils` | `gcc` `binutils` | `gcc` `binutils` |
 | `as` (assembler) | `binutils` | `binutils` | `binutils` |
-| `grub2-mkrescue` | `grub2-common` `xorriso` | `grub` `libisoburn` | `grub2-tools` `xorriso` |
+| `grub2-mkrescue` | `grub2-common` `xorriso` `mtools` | `grub` `libisoburn` `mtools` | `grub2-tools` `xorriso` `mtools` |
 | `qemu-system-x86_64` (testing) | `qemu-system-x86` | `qemu-system-x86` | `qemu-system-x86` |
 
 ### Build & Run

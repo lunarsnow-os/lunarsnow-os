@@ -86,7 +86,7 @@ static void draw(int wi)
 
 void prog_about(void)
 {
-    about_win = gui_wnew("About", 230, 180, 340, 200);
-    gui_wbtn(about_win, "OK", 140, 140, 60, 26, app_close);
+    about_win = gui_wnew("About", (fb_w - 500) / 2, (fb_h - 220) / 2, 500, 220);
+    gui_wbtn(about_win, "OK", 220, 160, 60, 26, app_close);
     wins[about_win].draw = draw;
 }
