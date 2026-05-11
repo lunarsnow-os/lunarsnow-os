@@ -120,6 +120,8 @@ int boot_sec_total;
 int cpu_ok;
 int cpu_family, cpu_model, cpu_stepping;
 char cpu_name[32];
+static uint32_t mb_magic;
+static void *mb_info;
 
 static const char *cpu_model_name(void)
 {
@@ -264,7 +266,7 @@ static int fb_init(uint32_t magic, void *mbinfo)
 
 static void boot_screen(void)
 {
-    uint32_t bg = 0x0A0A1A;
+    uint32_t bg = 0x000000;
     fb_clear(bg);
 
     uint32_t panel_c = 0x0F0F24;
@@ -364,6 +366,20 @@ static void acpi_poweroff(void)
     uint32_t sig1 = 0x20525450;
     uint32_t addr = 0;
 
+    /* Try multiboot2 ACPI RSDP tag first */
+    if (mb_magic == 0x36D76289) {
+        uint8_t *tag = (uint8_t*)mb2_find_tag(mb_info, 20);
+        if (tag) {
+            uint8_t *rsdp = tag + 8;
+            uint8_t sum = 0;
+            for (int i = 0; i < 20; i++) sum += rsdp[i];
+            if (sum == 0) {
+                addr = (uint32_t)(uintptr_t)rsdp;
+                goto rsdp_found;
+            }
+        }
+    }
+
     uint16_t ebda_seg;
     asm volatile("movw 0x40E, %0" : "=r"(ebda_seg));
     uint32_t ebda = (uint32_t)ebda_seg << 4;
@@ -391,7 +407,7 @@ static void acpi_poweroff(void)
 
 rsdp_found:;
     uint32_t rsdt_addr = *(volatile uint32_t*)(uintptr_t)(addr + 16);
-    if (rsdt_addr < 0xE0000 || rsdt_addr > 0xFFFFF) return;
+    if (rsdt_addr < 0x1000 || rsdt_addr > 0xFFF00000) return;
 
     volatile uint32_t *rsdt = (volatile uint32_t*)(uintptr_t)rsdt_addr;
     uint32_t rsdt_len = rsdt[1];
@@ -401,7 +417,7 @@ rsdp_found:;
     uint32_t fadt_addr = 0;
     for (uint32_t i = 0; i < entries; i++) {
         uint32_t ptr = rsdt[9 + i];
-        if (ptr < 0xE0000 || ptr > 0xFFFFF) continue;
+        if (ptr < 0x1000 || ptr > 0xFFF00000) continue;
         volatile uint32_t *hdr = (volatile uint32_t*)(uintptr_t)ptr;
         if (hdr[0] == 0x50434146) { fadt_addr = ptr; break; }
     }
@@ -448,6 +464,7 @@ rsdp_found:;
 
 void kmain(uint32_t magic, void *mbinfo)
 {
+    mb_magic = magic; mb_info = mbinfo;
     if (fb_init(magic, mbinfo) < 0) return;
 
     boot_screen();
@@ -565,28 +582,11 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     if (run == -1) {
-        /* Reboot animation */
-        fb_clear(0x0A0A1A);
-        uint32_t pc = 0x0F0F24;
-        int cx = fb_w / 2, px = cx - 150, py = fb_h / 2 - 60;
-        fb_rect(px, py, 300, 120, pc);
-        fb_border(px, py, 300, 120, 0x3C50A0);
-        fb_txt(cx - 50, py + 20, "Rebooting...", 0xE6E6F0, pc);
-        fb_rect(px + 20, py + 60, 260, 14, 0x1A1A3A);
-        fb_border(px + 20, py + 60, 260, 14, 0x3C50A0);
-        for (int p = 0; p <= 100; p++) {
-            fb_rect(px + 22, py + 62, (256 * p) / 100, 10, 0x3C50A0);
-            fb_flip();
-            for (volatile int d = 0; d < 15000; d++);
-        }
-        for (volatile int d = 0; d < 100000; d++);
-
+        /* Reboot */
         fb_clear(0x000000);
         int dy = 10;
         #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
-        DBG("Reboot: 0x92...");
-        outb(0x92, 0x02); outb(0x92, 0x03);
-        DBG("Reboot: lidt+ud2...");
+        DBG("Reboot: triple fault...");
         __asm__ __volatile__(
             "pushl $0\n\t"
             "pushl $0\n\t"
@@ -594,34 +594,15 @@ void kmain(uint32_t magic, void *mbinfo)
             "ud2\n\t"
             : : : "memory"
         );
+        DBG("Reboot: keyboard reset...");
+        outb(0x64, 0xFE);
+        for (volatile int d = 0; d < 30000; d++);
         DBG("Reboot: ALL FAILED, halting");
         for (;;) asm("hlt");
         #undef DBG
     }
 
-    /* Shutdown animation */
-    fb_clear(0x0A0A1A);
-    uint32_t pc = 0x0F0F24;
-    int cx = fb_w / 2, px = cx - 150, py = fb_h / 2 - 60;
-    fb_rect(px, py, 300, 120, pc);
-    fb_border(px, py, 300, 120, 0x3C50A0);
-    fb_txt(cx - 46, py + 20, "Shutting down...", 0xE6E6F0, pc);
-    fb_rect(px + 20, py + 60, 260, 14, 0x1A1A3A);
-    fb_border(px + 20, py + 60, 260, 14, 0x3C50A0);
-    for (int p = 0; p <= 100; p++) {
-        fb_rect(px + 22, py + 62, (256 * p) / 100, 10, 0x3C50A0);
-        fb_flip();
-        for (volatile int d = 0; d < 15000; d++);
-    }
-    /* Fade to black */
-    for (int bright = 0x3C50A0; bright > 0x0A0A1A; ) {
-        bright = ((bright & 0xFEFEFE) >> 1) & 0x7F7F7F;
-        fb_rect(px, py, 300, 120, bright);
-        fb_flip();
-        for (volatile int d = 0; d < 30000; d++);
-    }
-    for (volatile int d = 0; d < 100000; d++);
-
+    /* Shutdown */
     fb_clear(0x000000);
     int dy = 10;
     #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
