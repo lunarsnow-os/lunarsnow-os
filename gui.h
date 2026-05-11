@@ -14,6 +14,8 @@ typedef struct {
     uint32_t bg, tb;
     Btn btns[MAX_B];
     int nb, fc;
+    void (*draw)(int wi);
+    void (*on_key)(int k);
 } Win;
 
 /* Window management */
@@ -25,11 +27,8 @@ void gui_mouse_click(void);
 void gui_menu_add(const char *name, void (*cb)(void));
 int  gui_menu_count(void);
 void gui_menu_exec(int i);
-
-/* App hooks — apps.c sets these */
-extern int   app_win;
-extern void (*app_on_key)(int key);
-extern void (*app_on_draw)(void);
+void gui_set_dirty(void);
+void gui_update_cursor(void);
 
 /* Colors */
 enum {
@@ -62,5 +61,6 @@ extern Win wins[MAX_W];
 extern int nw, act, run;
 extern int focus_mode, menu_open, menu_focus;
 extern int mouse_drag, mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
+extern int need_render;
 
 #endif

@@ -103,10 +103,12 @@ static void mouse_process(uint8_t data)
         mouse_pkt[1] = data; mouse_cycle = 2;
     } else {
         mouse_pkt[2] = data; mouse_cycle = 0;
-        int dx = (int8_t)mouse_pkt[1];
-        int dy = -(int8_t)mouse_pkt[2];
+        int16_t dx = mouse_pkt[1];
+        int16_t dy = mouse_pkt[2];
+        if (mouse_pkt[0] & 0x10) dx -= 256;
+        if (mouse_pkt[0] & 0x20) dy -= 256;
         mouse_btn = mouse_pkt[0] & 3;
-        mouse_x += dx; mouse_y += dy;
+        mouse_x += dx; mouse_y -= dy;
         if (mouse_x < 0) mouse_x = 0;
         if (mouse_x >= fb_w) mouse_x = fb_w - 1;
         if (mouse_y < 0) mouse_y = 0;
@@ -114,20 +116,39 @@ static void mouse_process(uint8_t data)
     }
 }
 
+static void mouse_wait_wr(void)
+{
+    for (int t = 0; t < 10000 && (inb(0x64) & 2); t++);
+}
+
+static void mouse_wait_rd(void)
+{
+    for (int t = 0; t < 10000 && !(inb(0x64) & 1); t++);
+}
+
 void mouse_init(void)
 {
+    /* Enable auxiliary device on keyboard controller */
     outb(0x64, 0xA8);
-    while (inb(0x64) & 2);
-    outb(0x64, 0xD4);
-    while (inb(0x64) & 2);
-    outb(0x60, 0xF6);
-    while (!(inb(0x64) & 1));
+    mouse_wait_wr();
+
+    /* Read and modify command byte: enable AUX IRQ and disable AUX clock */
+    outb(0x64, 0x20); mouse_wait_rd();
+    uint8_t cfg = inb(0x60); mouse_wait_wr();
+    cfg = (cfg | 2) & ~0x20;           /* bit 1 = enable AUX IRQ, bit 5 = enable AUX clock */
+    outb(0x64, 0x60); mouse_wait_wr();
+    outb(0x60, cfg);   mouse_wait_wr();
+
+    /* Send defaults to mouse (resets to 3-byte packets, 100 samples/sec) */
+    outb(0x64, 0xD4); mouse_wait_wr();
+    outb(0x60, 0xF6); mouse_wait_rd();
+    inb(0x60);                         /* discard ACK */
+
+    /* Enable data reporting */
+    outb(0x64, 0xD4); mouse_wait_wr();
+    outb(0x60, 0xF4); mouse_wait_rd();
     inb(0x60);
-    outb(0x64, 0xD4);
-    while (inb(0x64) & 2);
-    outb(0x60, 0xF4);
-    while (!(inb(0x64) & 1));
-    inb(0x60);
+
     mouse_x = fb_w / 2;
     mouse_y = fb_h / 2;
 }

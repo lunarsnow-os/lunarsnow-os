@@ -10,6 +10,27 @@ static int about_win = -1;
 /* forward declarations for callbacks used in term_exec */
 void cb_about(void);
 void cb_new(void);
+void cb_reboot(void);
+
+/* About info from kernel */
+extern uint32_t total_ram;
+extern char cpu_vendor[];
+extern char cpu_brand[];
+extern int boot_sec_total;
+extern int cpu_ok;
+extern int cpu_family, cpu_model, cpu_stepping;
+extern char cpu_name[];
+
+static void str_int(char *buf, int val)
+{
+    if (val == 0) { buf[0] = '0'; buf[1] = 0; return; }
+    if (val < 0) { buf[0] = '-'; str_int(buf + 1, -val); return; }
+    char tmp[16]; int i = 0;
+    while (val > 0) { tmp[i++] = '0' + (val % 10); val /= 10; }
+    int j = 0;
+    while (i > 0) buf[j++] = tmp[--i];
+    buf[j] = 0;
+}
 
 /* ================================================================
    TERMINAL
@@ -89,14 +110,8 @@ static void term_key(int key)
     if (key == '\n') term_exec();
 }
 
-static void term_draw(void)
+static void term_draw(int wi)
 {
-    /* app_win is set when terminal is active — draw with absolute pos */
-    int wi = -1;
-    for (int i = 0; i < nw; i++)
-        if (s_len(wins[i].title) >= 8 && wins[i].title[0] == 'T') { wi = i; break; }
-    if (wi < 0) return;
-
     Win *w = &wins[wi];
     int wx = w->x + 4, wy = w->y + 22;
     uint32_t bg = 0x000000, fg = 0x00CC00;
@@ -157,13 +172,8 @@ static void ccM(void) { ccE(); calc_val = calc_cur; calc_op = 3; calc_cur = 0; }
 static void ccD(void) { ccE(); calc_val = calc_cur; calc_op = 4; calc_cur = 0; }
 static void ccC(void) { calc_val = 0; calc_cur = 0; calc_op = 0; calc_disp_upd(); }
 
-static void calc_draw(void)
+static void calc_draw(int wi)
 {
-    int wi = -1;
-    for (int i = 0; i < nw; i++)
-        if (s_len(wins[i].title) >= 8 && wins[i].title[0] == 'C') { wi = i; break; }
-    if (wi < 0) return;
-
     Win *w = &wins[wi];
     int dx = w->x + 10, dy = w->y + 24;
     fb_rect(dx, dy, 220, 34, 0xFFFFFF);
@@ -175,17 +185,67 @@ static void calc_draw(void)
    ABOUT
    ================================================================ */
 
-static void about_draw(void)
+static void about_draw(int wi)
 {
-    int wi = -1;
-    for (int i = 0; i < nw; i++)
-        if (s_len(wins[i].title) >= 5 && wins[i].title[0] == 'A') { wi = i; break; }
-    if (wi < 0) return;
-
     Win *w = &wins[wi];
     int wx = w->x + 10, wy = w->y + 28;
+    char buf[64];
+
     fb_txt(wx, wy, "Made by: Lesano and Nixxlte :3", C_TTT, w->bg);
-    fb_txt(wx, wy + 18, "Version: Alpha 0.1", C_LBL, w->bg);
+    fb_txt(wx, wy + 18, "OS Version: Alpha 0.2", C_LBL, w->bg);
+    fb_txt(wx, wy + 35, "LunarUI Version: 0.0-3", C_LBL, w->bg);
+
+    int dy = wy + 60;
+    if (cpu_ok) {
+        if (cpu_brand[0]) {
+            int p = 0;
+            for (int i = 0; cpu_brand[i] && i < 55; i++) buf[p++] = cpu_brand[i];
+            buf[p] = 0;
+            fb_txt(wx, dy, buf, C_LBL, w->bg);
+            dy += 18;
+        } else if (cpu_name[0]) {
+            int pp = 0;
+            for (int i = 0; cpu_name[i]; i++) buf[pp++] = cpu_name[i];
+            buf[pp] = 0;
+            fb_txt(wx, dy, buf, C_LBL, w->bg);
+            dy += 18;
+        }
+        int pp = 0;
+        const char *v = "Vendor: ";
+        while (*v) buf[pp++] = *v++;
+        for (int i = 0; cpu_vendor[i]; i++) buf[pp++] = cpu_vendor[i];
+        buf[pp] = 0;
+        fb_txt(wx, dy, buf, C_LBL, w->bg);
+        dy += 18;
+    }
+
+    if (total_ram) {
+        uint32_t mb = total_ram / (1024 * 1024);
+        int p = 0;
+        const char *r = "RAM: ";
+        while (*r) buf[p++] = *r++;
+        str_int(buf + p, (int)mb);
+        while (buf[p]) p++;
+        buf[p++] = ' '; buf[p++] = 'M'; buf[p++] = 'B'; buf[p] = 0;
+        fb_txt(wx, dy, buf, C_LBL, w->bg);
+        dy += 18;
+    }
+
+    {
+        int h, m, s, p = 0;
+        extern void rtc_read(int *h, int *m, int *s);
+        rtc_read(&h, &m, &s);
+        int secs = (h * 3600 + m * 60 + s) - boot_sec_total;
+        if (secs < 0) secs += 86400;
+        h = secs / 3600; m = (secs % 3600) / 60; s = secs % 60;
+        const char *u = "Uptime: ";
+        while (*u) buf[p++] = *u++;
+        buf[p++] = '0' + h / 10; buf[p++] = '0' + h % 10;
+        buf[p++] = ':'; buf[p++] = '0' + m / 10; buf[p++] = '0' + m % 10;
+        buf[p++] = ':'; buf[p++] = '0' + s / 10; buf[p++] = '0' + s % 10;
+        buf[p] = 0;
+        fb_txt(wx, dy, buf, C_LBL, w->bg);
+    }
 }
 
 /* ================================================================
@@ -207,16 +267,13 @@ void cb_new(void)
 
 void cb_term(void)
 {
-    app_on_key = 0; app_on_draw = 0; /* clear previous */
     int wi = gui_wnew("Terminal", 120, 80, 580, 400);
-    app_win = wi;
-    app_on_key = term_key;
-    app_on_draw = term_draw;
+    wins[wi].on_key = term_key;
+    wins[wi].draw = term_draw;
 }
 
 void cb_calc(void)
 {
-    app_on_key = 0; app_on_draw = 0;
     int wi = gui_wnew("Calculator", 200, 140, 260, 290);
     wins[wi].bg = 0xD4D4D4;
     int bx = 8;
@@ -236,17 +293,15 @@ void cb_calc(void)
     gui_wbtn(wi, "0", bx+58, 164, 52, 34, cc0);
     gui_wbtn(wi, "=", bx+116, 164, 52, 34, ccE);
     gui_wbtn(wi, "+", bx+174, 164, 52, 34, ccP);
-    app_win = wi;
-    app_on_draw = calc_draw;
+    wins[wi].draw = calc_draw;
 }
 
 void cb_about(void)
 {
-    app_on_key = 0; app_on_draw = 0;
-    about_win = gui_wnew("About", 230, 180, 280, 140);
-    gui_wbtn(about_win, "OK", 110, 90, 60, 26, cb_close);
-    app_win = about_win;
-    app_on_draw = about_draw;
+    about_win = gui_wnew("About", 230, 180, 340, 200);
+    gui_wbtn(about_win, "OK", 140, 140, 60, 26, cb_close);
+    wins[about_win].draw = about_draw;
 }
 
 void cb_shutdown(void) { run = 0; }
+void cb_reboot(void) { run = -1; }

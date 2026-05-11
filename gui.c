@@ -13,10 +13,6 @@ int nw, act, run;
 int focus_mode, menu_open, menu_focus;
 int mouse_drag, mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
 
-int app_win = -1;
-void (*app_on_key)(int) = 0;
-void (*app_on_draw)(void) = 0;
-
 /* Dynamic menu */
 #define MENU_MAX 16
 static struct { const char *name; void (*cb)(void); } menu[MENU_MAX];
@@ -44,6 +40,7 @@ int gui_wnew(const char *t, int x, int y, int w, int h)
     s_cpy(wins[i].title, t, 24);
     wins[i].bg = C_WBG; wins[i].tb = C_TAC;
     wins[i].nb = 0; wins[i].fc = 0;
+    wins[i].draw = 0; wins[i].on_key = 0;
     act = i; return i;
 }
 
@@ -61,8 +58,6 @@ void gui_wclose(int idx)
     for (int i = idx; i < nw - 1; i++) mcpy(&wins[i], &wins[i+1], sizeof(Win));
     nw--;
     if (act >= nw && nw > 0) act = nw - 1;
-    if (idx == app_win) app_win = -1;
-    else if (idx < app_win) app_win--;
 }
 
 /* ================================================================
@@ -96,31 +91,78 @@ static void wdraw(int wi)
         int l = s_len(b->t);
         fb_txt(bx + (b->w - l * 8) / 2, by + (b->h - 16) / 2, b->t, C_BT, col);
     }
+
+    if (w->draw) w->draw(wi);
 }
 
 /* ================================================================
-   MOUSE CURSOR
+   MOUSE CURSOR — save/restore for fast redraw
    ================================================================ */
+
+#define CUR_W 9
+#define CUR_H 13
 
 static const uint8_t curs_img[] = {
     0x80, 0xC0, 0xA0, 0x90, 0x88, 0x84,
     0x82, 0x81, 0x80, 0xA0, 0x50, 0x20
 };
 
-static void mouse_draw(void)
+static uint32_t curs_save[CUR_H][CUR_W];
+static int curs_sx = -1, curs_sy = -1;
+
+int need_render = 1;
+void gui_set_dirty(void) { need_render = 1; }
+
+static void curs_restore(void)
+{
+    int x = curs_sx, y = curs_sy;
+    if (x < 0) return;
+    for (int r = 0; r < CUR_H && y + r < fb_h; r++)
+        for (int c = 0; c < CUR_W && x + c < fb_w; c++)
+            sbuf[(y + r) * fb_w + (x + c)] = curs_save[r][c];
+}
+
+static void curs_save_area(void)
 {
     int x = mouse_x, y = mouse_y;
+    for (int r = 0; r < CUR_H && y + r < fb_h; r++)
+        for (int c = 0; c < CUR_W && x + c < fb_w; c++)
+            curs_save[r][c] = sbuf[(y + r) * fb_w + (x + c)];
+    curs_sx = x; curs_sy = y;
+}
+
+static void curs_draw_at(int x, int y)
+{
     for (int r = 0; r < 12 && y + r + 1 < fb_h; r++) {
         uint8_t bits = curs_img[r];
         for (int c = 0; c < 8 && x + c + 1 < fb_w; c++)
             if (bits & (0x80 >> c))
-                sbuf[(y + r + 1) * (fb_pch / 4) + (x + c + 1)] = 0x000000;
+                sbuf[(y + r + 1) * fb_w + (x + c + 1)] = 0x000000;
     }
     for (int r = 0; r < 12 && y + r < fb_h; r++) {
         uint8_t bits = curs_img[r];
         for (int c = 0; c < 8 && x + c < fb_w; c++)
             if (bits & (0x80 >> c))
-                sbuf[(y + r) * (fb_pch / 4) + (x + c)] = 0xFFFFFF;
+                sbuf[(y + r) * fb_w + (x + c)] = 0xFFFFFF;
+    }
+}
+
+void gui_update_cursor(void)
+{
+    int ox = curs_sx, oy = curs_sy;
+    curs_restore();
+    curs_save_area();
+    curs_draw_at(mouse_x, mouse_y);
+    if (ox >= 0) {
+        int x1 = ox < mouse_x ? ox : mouse_x;
+        int y1 = oy < mouse_y ? oy : mouse_y;
+        int x2 = (ox > mouse_x ? ox : mouse_x) + CUR_W;
+        int y2 = (oy > mouse_y ? oy : mouse_y) + CUR_H;
+        if (x2 > fb_w) x2 = fb_w;
+        if (y2 > fb_h) y2 = fb_h;
+        fb_flip_rect(x1, y1, x2 - x1, y2 - y1);
+    } else {
+        fb_flip_rect(mouse_x, mouse_y, CUR_W, CUR_H);
     }
 }
 
@@ -237,9 +279,7 @@ void gui_render(void)
         }
     }
 
-    /* App-specific drawing */
-    if (app_on_draw) app_on_draw();
-
-    mouse_draw();
+    curs_save_area();
+    curs_draw_at(mouse_x, mouse_y);
     fb_flip();
 }

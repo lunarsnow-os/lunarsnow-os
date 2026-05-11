@@ -4,10 +4,8 @@
 static char name[32];
 static int name_len, name_done;
 
-static void draw(void)
+static void draw(int wi)
 {
-    int wi = app_win;
-    if (wi < 0) return;
     Win *w = &wins[wi];
     int x = w->x + 10, y = w->y + 28;
 
@@ -43,11 +41,9 @@ static void key(int k)
 
 void prog_inputname(void)
 {
-    app_on_key = 0; app_on_draw = 0;
     name_len = 0; name_done = 0; name[0] = 0;
     int wi = gui_wnew("Input Name", 200, 160, 260, 160);
     gui_wbtn(wi, "OK", 100, 100, 60, 26, app_close);
-    app_win = wi;
-    app_on_key = key;
-    app_on_draw = draw;
+    wins[wi].on_key = key;
+    wins[wi].draw = draw;
 }
