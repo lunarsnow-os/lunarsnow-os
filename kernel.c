@@ -113,7 +113,7 @@ static void *mb2_find_tag(void *info, uint32_t type)
    GLOBALS for About window
    ================================================================ */
 
-uint32_t total_ram;
+uint64_t total_ram;
 char cpu_vendor[16];
 char cpu_brand[64];
 int boot_sec_total;
@@ -200,16 +200,28 @@ static void detect_cpu(void)
 static void parse_memory(uint32_t magic, void *mbinfo)
 {
     total_ram = 0;
-    if (magic == 0x2BADB002) {
-        uint32_t *info = (uint32_t*)mbinfo;
-        if (info[0] & 1)
-            total_ram = (info[1] + info[2]) * 1024;
-    } else if (magic == 0x36D76289) {
-        uint8_t *tag = mb2_find_tag(mbinfo, 4);
+    if (magic == 0x36D76289) {
+        /* Try memory map tag (type 6) first — supports >4GB via E820 */
+        uint8_t *tag = mb2_find_tag(mbinfo, 6);
+        if (tag) {
+            uint32_t entry_size = *(uint32_t*)(tag + 8);
+            uint32_t total_size = *(uint32_t*)(tag + 4);
+            uint8_t *p = tag + 16;
+            while ((uint32_t)(p - tag) < total_size) {
+                uint64_t base  = *(uint64_t*)(p + 0);
+                uint64_t len   = *(uint64_t*)(p + 8);
+                uint32_t type  = *(uint32_t*)(p + 16);
+                if (type == 1) total_ram += len;
+                p += entry_size;
+            }
+            return;
+        }
+        /* Fallback to basic memory info (type 4) */
+        tag = mb2_find_tag(mbinfo, 4);
         if (tag) {
             uint32_t lower = *(uint32_t*)(tag + 8);
             uint32_t upper = *(uint32_t*)(tag + 12);
-            total_ram = (lower + upper) * 1024;
+            total_ram = (uint64_t)(lower + upper) * 1024;
         }
     }
 }
@@ -220,8 +232,24 @@ static void parse_memory(uint32_t magic, void *mbinfo)
 
 static int fb_init(uint32_t magic, void *mbinfo)
 {
-    /* Try Bochs VBE first (works on QEMU with -kernel) */
-    uint32_t fb_addr = 0;
+    /* Try multiboot2 framebuffer first (GRUB provides this) */
+    if (magic == 0x36D76289) {
+        uint8_t *tag = mb2_find_tag(mbinfo, 8);
+        if (tag) {
+            uint64_t a = *(uint64_t*)(tag + 8);
+            uint32_t pitch = *(uint32_t*)(tag + 16);
+            uint32_t w = *(uint32_t*)(tag + 20);
+            uint32_t h = *(uint32_t*)(tag + 24);
+            uint8_t bpp = *(tag + 28);
+            if ((bpp == 16 || bpp == 24 || bpp == 32) && w <= 800 && h <= 600) {
+                fb_init_ptr((uint32_t*)(uintptr_t)a, (int)w, (int)h, (int)pitch, bpp);
+                return 0;
+            }
+        }
+    }
+
+    /* Fall back to Bochs VBE (for QEMU -kernel mode, or when GRUB lacks fb) */
+    uintptr_t fb_addr = 0;
     for (int dev = 0; dev < 32; dev++) {
         uint32_t id = pci_read(PCI_ADDR(0, dev, 0, 0));
         uint32_t vid = id & 0xFFFF;
@@ -239,22 +267,6 @@ static int fb_init(uint32_t magic, void *mbinfo)
         vbe_set(800, 600, 32);
         fb_init_ptr((uint32_t*)fb_addr, 800, 600, 800 * 4, 32);
         return 0;
-    }
-
-    /* Fall back to multiboot2 framebuffer (real hardware via GRUB) */
-    if (magic == 0x36D76289) {
-        uint8_t *tag = mb2_find_tag(mbinfo, 8);
-        if (tag) {
-            uint64_t a = *(uint64_t*)(tag + 8);
-            uint32_t pitch = *(uint32_t*)(tag + 16);
-            uint32_t w = *(uint32_t*)(tag + 20);
-            uint32_t h = *(uint32_t*)(tag + 24);
-            uint8_t bpp = *(tag + 28);
-            if ((bpp == 16 || bpp == 24 || bpp == 32) && w <= 800 && h <= 600) {
-                fb_init_ptr((uint32_t*)(uint32_t)a, (int)w, (int)h, (int)pitch, bpp);
-                return 0;
-            }
-        }
     }
 
     return -1;
@@ -276,11 +288,11 @@ static void boot_screen(void)
     fb_rect(px, py, pw, ph, panel_c);
     fb_border(px, py, pw, ph, 0x3C50A0);
 
-    char *title = "LunarSnow OS";
+    char *title = "LunarSnow OS x64 Edition";
     int tx = cx - s_len(title) * 4;
     fb_txt(tx, py + 30, title, 0xE6E6F0, panel_c);
 
-    char *ver = "v0.2-alpha";
+    char *ver = "v0.2-alpha x64";
     int vx = cx - s_len(ver) * 4;
     fb_txt(vx, py + 54, ver, 0x5A5A7A, panel_c);
 
@@ -588,9 +600,9 @@ void kmain(uint32_t magic, void *mbinfo)
         #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
         DBG("Reboot: triple fault...");
         __asm__ __volatile__(
-            "pushl $0\n\t"
-            "pushl $0\n\t"
-            "lidt (%%esp)\n\t"
+            "pushq $0\n\t"
+            "pushq $0\n\t"
+            "lidt (%%rsp)\n\t"
             "ud2\n\t"
             : : : "memory"
         );

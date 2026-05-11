@@ -1,9 +1,9 @@
 CC = gcc
 AS = as
 LD = ld
-CFLAGS = -m32 -ffreestanding -nostdlib -Wall -Wextra -O2
-ASFLAGS = --32
-LDFLAGS = -m elf_i386 -T linker.ld
+CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -Wextra -O2
+ASFLAGS = --64
+LDFLAGS = -m elf_x86_64 -T linker.ld
 
 OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
 
@@ -23,17 +23,17 @@ clean:
 	rm -f progs/*.o
 	rm -rf iso/
 
-run: lunarsnow.elf
-	qemu-system-x86_64 -kernel lunarsnow.elf -m 64
+run: lunarsnow.iso
+	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M
 
-run-vnc: lunarsnow.elf
-	qemu-system-x86_64 -kernel lunarsnow.elf -m 64 -vnc :0
+run-vnc: lunarsnow.iso
+	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M -vnc :0
 
-run-sdl: lunarsnow.elf
-	qemu-system-x86_64 -kernel lunarsnow.elf -m 64 -display sdl
+run-sdl: lunarsnow.iso
+	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M -display sdl
 
-run-gtk: lunarsnow.elf
-	qemu-system-x86_64 -kernel lunarsnow.elf -m 64 -display gtk
+run-gtk: lunarsnow.iso
+	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M -display gtk
 
 iso: lunarsnow.iso
 
@@ -46,7 +46,7 @@ lunarsnow.iso: lunarsnow.elf
 	$(GRUB_MKRESCUE) -o lunarsnow.iso iso/
 
 run-iso: lunarsnow.iso
-	qemu-system-x86_64 -cdrom lunarsnow.iso -m 64
+	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M
 
 # Usage: make remote REPO=org/repo
 remote:

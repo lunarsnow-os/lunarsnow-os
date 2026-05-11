@@ -43,7 +43,7 @@ static void draw(int wi)
         fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 16;
     }
 
-    extern uint32_t total_ram;
+    extern uint64_t total_ram;
     if (total_ram) {
         p = 0;
         const char *r = "RAM: ";
@@ -90,7 +90,7 @@ static void draw(int wi)
     /* Version */
     wy += 6;
     fb_txt(wx, wy, "About", 0x5A7AC0, w->bg); wy += 18;
-    fb_txt(wx + 8, wy, "LunarSnow OS v0.2-alpha", C_LBL, w->bg); wy += 16;
+    fb_txt(wx + 8, wy, "LunarSnow OS v0.2-alpha x64", C_LBL, w->bg); wy += 16;
     fb_txt(wx + 8, wy, "LunarUI v0.0-3", C_LBL, w->bg);
 }
 

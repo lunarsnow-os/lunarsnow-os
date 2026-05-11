@@ -2,7 +2,7 @@
 
 static int about_win = -1;
 
-extern uint32_t total_ram;
+extern uint64_t total_ram;
 extern char cpu_vendor[];
 extern char cpu_brand[];
 extern int boot_sec_total;
@@ -56,7 +56,7 @@ static void draw(int wi)
     }
 
     if (total_ram) {
-        uint32_t mb = total_ram / (1024 * 1024);
+        uint64_t mb = total_ram / (1024 * 1024);
         int p = 0;
         const char *r = "RAM: ";
         while (*r) buf[p++] = *r++;
