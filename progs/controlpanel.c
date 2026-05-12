@@ -11,8 +11,7 @@ static void str_int(char *buf, int val)
     buf[j] = 0;
 }
 
-static void draw(int wi)
-{
+static void drawMain(int wi) {
     Win *w = &wins[wi];
     int wx = w->x + 12, wy = w->y + 28;
     char buf[64]; int p;
@@ -108,9 +107,25 @@ static void draw(int wi)
     fb_txt(wx + 8, wy, "LunarUI v0.0-3", C_LBL, w->bg);
 }
 
-void prog_controlpanel(void)
-{
+void drawMouse(int wi) {
+    Win *w = &wins[wi];
+    int wx = w->x + 12, wy = w->y + 28;
+    char buf[64]; int p;
+
+    fb_txt(wx, wy, "Mouse Settings", C_TTT, w->bg);
+    fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
+    wy += 34;
+}
+
+void mouse_settings() {
+    int wi = gui_wnew("Control Panel - Mouse", (fb_w - 420) / 2, 50, 420, 380);
+    msgbox("Message", "This section is under construction.");
+    wins[wi].draw = drawMouse;
+}
+
+// actual window ig (Nixs comment)
+void prog_controlpanel(void) {
     int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 380);
-    gui_wbtn(wi, "Close", 180, 330, 60, 26, app_close);
-    wins[wi].draw = draw;
+    gui_wbtn(wi, "Mouse settings", 2, 260, 130, 26, mouse_settings);
+    wins[wi].draw = drawMain;
 }
