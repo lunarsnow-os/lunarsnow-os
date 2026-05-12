@@ -28,7 +28,7 @@ static void draw(int wi)
     char buf[64];
 
     fb_txt(wx, wy, "Made by: Lesano and Nixxlte :3", C_TTT, w->bg);
-    fb_txt(wx, wy + 18, "OS Version: Alpha 0.2", C_LBL, w->bg);
+    fb_txt(wx, wy + 18, "OS Version: 0.2-alpha x64 edition", C_LBL, w->bg);
     fb_txt(wx, wy + 35, "LunarUI Version: 0.0-3", C_LBL, w->bg);
 
     int dy = wy + 60;

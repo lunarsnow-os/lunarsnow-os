@@ -87,7 +87,7 @@ static void drawMain(int wi) {
     }
 
     /* Video section */
-    fb_txt(wx, wy, "Video", 0x5A7AC0, w->bg); wy += 18;
+    /*fb_txt(wx, wy, "Video", 0x5A7AC0, w->bg); wy += 18;
 
     extern int fb_w, fb_h, fb_bpp;
     p = 0;
@@ -102,8 +102,8 @@ static void drawMain(int wi) {
 
     wy += 6;
     fb_txt(wx, wy, "About", 0x5A7AC0, w->bg); wy += 18;
-    fb_txt(wx + 8, wy, "LunarSnow OS v0.2-alpha x64", C_LBL, w->bg); wy += 16;
-    fb_txt(wx + 8, wy, "LunarUI v0.0-3", C_LBL, w->bg);
+    fb_txt(wx + 8, wy, "LunarSnow OS v0.2-alpha x64 edition", C_LBL, w->bg); wy += 16;
+    fb_txt(wx + 8, wy, "LunarUI v0.0-3", C_LBL, w->bg);*/
 }
 
 void drawMouse(int wi) {
@@ -116,15 +116,43 @@ void drawMouse(int wi) {
     wy += 34;
 }
 
+void drawDisplay(int wi) {
+    Win *w = &wins[wi];
+    int wx = w->x + 12, wy = w->y + 28;
+    char buf[64]; int p;
+
+    fb_txt(wx, wy, "Display Settings", C_TTT, w->bg);
+    fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
+    wy += 34;
+
+    extern int fb_w, fb_h, fb_bpp;
+    p = 0;
+    const char *res = "Current resolution: ";
+    while (*res) buf[p++] = *res++;
+    str_int(buf + p, fb_w); while (buf[p]) p++;
+    buf[p++] = 'x'; str_int(buf + p, fb_h); while (buf[p]) p++;
+    buf[p++] = ' '; buf[p++] = '@'; buf[p++] = ' ';
+    str_int(buf + p, fb_bpp); while (buf[p]) p++;
+    buf[p++] = 'b'; buf[p++] = 'p'; buf[p++] = 'p'; buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 16;
+}
+
 void mouse_settings() {
     int wi = gui_wnew("Control Panel - Mouse", (fb_w - 420) / 2, 50, 420, 380);
     msgbox("Mouse Settings", "This section is under construction.");
     wins[wi].draw = drawMouse;
 }
 
+void display_settings() {
+    int wi = gui_wnew("Control Panel - Display", (fb_w - 420) / 2, 50, 420, 380);
+    msgbox("Display Settings", "This section is under construction.");
+    wins[wi].draw = drawDisplay;
+}
+
 // actual window ig (Nixs comment)
 void prog_controlpanel(void) {
     int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 380);
-    gui_wbtn(wi, "Mouse settings", 2, 260, 130, 26, mouse_settings);
+    gui_wbtn(wi, "Mouse", 2, 170, 130, 26, mouse_settings);
+    gui_wbtn(wi, "Display", 132, 170, 130, 26, display_settings);
     wins[wi].draw = drawMain;
 }
