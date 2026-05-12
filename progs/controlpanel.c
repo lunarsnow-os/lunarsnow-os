@@ -1,7 +1,6 @@
 #include "../lunarsnow.h"
 
-static void str_int(char *buf, int val)
-{
+static void str_int(char *buf, int val) {
     if (val == 0) { buf[0] = '0'; buf[1] = 0; return; }
     if (val < 0) { buf[0] = '-'; str_int(buf + 1, -val); return; }
     char tmp[16]; int i = 0;
@@ -119,7 +118,7 @@ void drawMouse(int wi) {
 
 void mouse_settings() {
     int wi = gui_wnew("Control Panel - Mouse", (fb_w - 420) / 2, 50, 420, 380);
-    msgbox("Message", "This section is under construction.");
+    msgbox("Mouse Settings", "This section is under construction.");
     wins[wi].draw = drawMouse;
 }
 

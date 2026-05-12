@@ -18,8 +18,7 @@ int mouse_drag, mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
 static struct { const char *name; void (*cb)(void); } menu[MENU_MAX];
 static int menu_n;
 
-void gui_menu_add(const char *name, void (*cb)(void))
-{
+void gui_menu_add(const char *name, void (*cb)(void)) {
     if (menu_n < MENU_MAX) { menu[menu_n].name = name; menu[menu_n].cb = cb; menu_n++; }
 }
 
@@ -32,8 +31,7 @@ extern void rtc_read(int *h, int *m, int *s);
    WINDOW MANAGEMENT
    ================================================================ */
 
-int gui_wnew(const char *t, int x, int y, int w, int h)
-{
+int gui_wnew(const char *t, int x, int y, int w, int h) {
     if (nw >= MAX_W) return -1;
     int i = nw++;
     wins[i].x = x; wins[i].y = y; wins[i].w = w; wins[i].h = h;
@@ -45,16 +43,14 @@ int gui_wnew(const char *t, int x, int y, int w, int h)
     act = i; return i;
 }
 
-int gui_wbtn(int wi, const char *t, int x, int y, int w, int h, void (*cb)(void))
-{
+int gui_wbtn(int wi, const char *t, int x, int y, int w, int h, void (*cb)(void)) {
     if (wi < 0 || wi >= nw) return -1;
     Btn *b = &wins[wi].btns[wins[wi].nb++];
     b->x = x; b->y = y; b->w = w; b->h = h; b->cb = cb;
     s_cpy(b->t, t, 24); return wins[wi].nb - 1;
 }
 
-void gui_wclose(int idx)
-{
+void gui_wclose(int idx) {
     if (idx < 0 || idx >= nw) return;
     for (int i = idx; i < nw - 1; i++) mcpy(&wins[i], &wins[i+1], sizeof(Win));
     nw--;
@@ -65,8 +61,7 @@ void gui_wclose(int idx)
    WINDOW DRAW
    ================================================================ */
 
-static void wdraw(int wi)
-{
+static void wdraw(int wi) {
     Win *w = &wins[wi];
     int x = w->x, y = w->y, ww = w->w, hh = w->h;
     int a = (wi == act);
@@ -114,8 +109,7 @@ static int curs_sx = -1, curs_sy = -1;
 int need_render = 1;
 void gui_set_dirty(void) { need_render = 1; }
 
-static void curs_restore(void)
-{
+static void curs_restore(void) {
     int x = curs_sx, y = curs_sy;
     if (x < 0) return;
     for (int r = 0; r < CUR_H && y + r < fb_h; r++)
@@ -123,8 +117,7 @@ static void curs_restore(void)
             sbuf[(y + r) * fb_w + (x + c)] = curs_save[r][c];
 }
 
-static void curs_save_area(void)
-{
+static void curs_save_area(void) {
     int x = mouse_x, y = mouse_y;
     for (int r = 0; r < CUR_H && y + r < fb_h; r++)
         for (int c = 0; c < CUR_W && x + c < fb_w; c++)
@@ -132,8 +125,7 @@ static void curs_save_area(void)
     curs_sx = x; curs_sy = y;
 }
 
-static void curs_draw_at(int x, int y)
-{
+static void curs_draw_at(int x, int y) {
     for (int r = 0; r < 12 && y + r + 1 < fb_h; r++) {
         uint8_t bits = curs_img[r];
         for (int c = 0; c < 8 && x + c + 1 < fb_w; c++)
@@ -148,8 +140,7 @@ static void curs_draw_at(int x, int y)
     }
 }
 
-void gui_update_cursor(void)
-{
+void gui_update_cursor(void) {
     int ox = curs_sx, oy = curs_sy;
     curs_restore();
     curs_save_area();
@@ -171,8 +162,7 @@ void gui_update_cursor(void)
    MOUSE CLICK
    ================================================================ */
 
-void gui_mouse_click(void)
-{
+void gui_mouse_click(void) {
     int x = mouse_x, y = mouse_y;
 
     if (menu_open) {
@@ -236,14 +226,13 @@ void gui_mouse_click(void)
    RENDER
    ================================================================ */
 
-void gui_render(void)
-{
+void gui_render(void) {
     fb_rect(0, 0, fb_w, fb_h, C_DSK);
     for (int i = 0; i < nw; i++) wdraw(i);
 
     /* Taskbar */
-    fb_rect(0, fb_h - TB_H, fb_w, TB_H, C_TBAR);
-    fb_border(0, fb_h - TB_H, fb_w, TB_H, C_BDR);
+    fb_rect(0, fb_h - TB_H, fb_w - 32, TB_H, C_TBAR);
+    fb_border(0, fb_h - TB_H, fb_w - 32, TB_H, C_BDR);
 
     uint32_t scol = (focus_mode == 1) ? C_STARTF : C_START;
     fb_rect(2, fb_h - TB_H + 2, ST_W, TB_H - 4, scol);
