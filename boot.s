@@ -28,10 +28,11 @@ multiboot2_end:
 .section .bss
 .align 4096
 pml4:  .space 4096
-/* 16 PDP tables, each 4K, together cover 64GB (16 × 4 × 1GB) */
-pdp:   .space 4096 * 16
-    .align 16
-    .space 16384
+pdp:   .space 4096
+/* 4 × Page Directory tables = 16KB, each maps 1GB via 512 × 2MB pages */
+pd:    .space 4096 * 4
+       .align 16
+       .space 16384
 stack_top:
 
 .section .data
@@ -68,38 +69,53 @@ _start:
     test $0x20000000, %edx
     jz .Lno64
 
-    /* Zero all page table pages: PML4 + 16 PDPs = 17 × 4K = 0x11000 bytes */
+    /* Zero page tables: PML4 + PDP + 4 PDs = 6 × 4K = 0x6000 bytes */
     lea pml4, %edi
     xor %eax, %eax
-    mov $0x11000, %ecx
+    mov $0x6000, %ecx
     rep stosb
 
-    /* Fill 16 PML4 entries and their PDP tables in a loop.
-       Each PDP table has 4 × 1GB page entries covering 4GB.
-       ecx = PML4 index, ebx = current PDP table address */
+    /* PML4[0] → PDP0 */
+    lea pdp, %eax
+    or $3, %eax
+    mov %eax, pml4
+
+    /* Setup 4 PDP entries and 4 PD tables, identity-mapping 0-4GB with 2MB pages.
+       ECX = PD table index (0..3), each maps 1GB.
+       EBX = address of current PD table. */
+    lea pd, %ebx
     xor %ecx, %ecx
-    lea pdp, %ebx
 .Louter:
+    /* PDP[ECX] → PD[ECX] (high dword already 0 from BSS zero-fill) */
     mov %ebx, %eax
     or $3, %eax
-    mov %eax, pml4(, %ecx, 8)
+    mov %eax, pdp(, %ecx, 8)
 
-    /* Fill 4 PDP entries: (edx << 30) | 0x83  in low dword,
-       ecx in high dword (since entries (ecx*4 .. ecx*4+3) all >> 2 = ecx) */
+    /* Fill PD table: 512 entries, each mapping a 2MB page.
+       Physical address = ECX * 1GB + EDX * 2MB.
+       Since ECX < 4, the address fits in 32 bits.
+       PD entry: low dword = (addr & 0xFFE00000) | 0x83, high dword = 0 */
     xor %edx, %edx
 .Linner:
-    mov %edx, %esi
-    shl $30, %esi
-    or $0x83, %esi
-    mov %esi, (%ebx, %edx, 8)
-    mov %ecx, 4(%ebx, %edx, 8)
+    mov %ecx, %esi
+    shl $30, %esi          /* ESI = ECX * 1GB (base address for this PD) */
+    mov %edx, %edi
+    shl $21, %edi          /* EDI = EDX * 2MB (offset within this PD) */
+    add %edi, %esi         /* ESI = full physical address */
+
+    and $0xFFE00000, %esi  /* keep only bits 21-31 */
+    or $0x83, %esi         /* flags: Present + Writable + PS(2MB) */
+
+    mov %esi, (%ebx, %edx, 8)    /* low dword */
+    mov $0, 4(%ebx, %edx, 8)     /* high dword = 0 */
+
     inc %edx
-    cmp $4, %edx
+    cmp $512, %edx
     jne .Linner
 
     add $4096, %ebx
     inc %ecx
-    cmp $16, %ecx
+    cmp $4, %ecx
     jne .Louter
 
     mov %cr4, %eax
