@@ -2,6 +2,7 @@
 #include "lunarsnow.h"
 #include "progs.h"
 #include "font8x16.h"
+#include "fat.h"
 
 /* ================================================================
    PORT I/O
@@ -46,7 +47,10 @@ static int bcd2bin(uint8_t v)
 void rtc_read(int *h, int *m, int *s)
 {
     uint8_t sec, min, hour;
-    while (cmos_r(0x0A) & 0x80);
+    int timeout = 0;
+    while (cmos_r(0x0A) & 0x80) {
+        if (++timeout > 10000) { *h = 0; *m = 0; *s = 0; return; }
+    }
     sec  = cmos_r(0x00);
     min  = cmos_r(0x02);
     hour = cmos_r(0x04);
@@ -73,23 +77,7 @@ static uint32_t pci_read(uint32_t addr)
    BOCHS VBE
    ================================================================ */
 
-#define VBE_IDX 0x1CE
-#define VBE_DAT 0x1CF
 
-static void vbe_w(uint16_t idx, uint16_t v)
-{
-    outw(VBE_IDX, idx);
-    outw(VBE_DAT, v);
-}
-
-static void vbe_set(int w, int h, int bpp)
-{
-    vbe_w(4, 0x00);
-    vbe_w(1, w);
-    vbe_w(2, h);
-    vbe_w(3, bpp);
-    vbe_w(4, 0x41);
-}
 
 /* ================================================================
    MULTIBOOT2 TAG PARSING
@@ -329,7 +317,7 @@ void file_iterate(void (*cb)(const char *name, uint32_t size))
 
 static int fb_init(uint32_t magic, void *mbinfo)
 {
-    /* Try multiboot2 framebuffer first (GRUB provides this) */
+    /* Try multiboot2 framebuffer (GRUB provides this in both BIOS and UEFI) */
     if (magic == 0x36D76289) {
         uint8_t *tag = mb2_find_tag(mbinfo, 8);
         if (tag) {
@@ -338,32 +326,11 @@ static int fb_init(uint32_t magic, void *mbinfo)
             uint32_t w = *(uint32_t*)(tag + 20);
             uint32_t h = *(uint32_t*)(tag + 24);
             uint8_t bpp = *(tag + 28);
-            if ((bpp == 16 || bpp == 24 || bpp == 32) && w <= 800 && h <= 600) {
+            if ((bpp == 16 || bpp == 24 || bpp == 32) && w >= 640 && h >= 480) {
                 fb_init_ptr((uint32_t*)(uintptr_t)a, (int)w, (int)h, (int)pitch, bpp);
                 return 0;
             }
         }
-    }
-
-    /* Fall back to Bochs VBE (for QEMU -kernel mode, or when GRUB lacks fb) */
-    uintptr_t fb_addr = 0;
-    for (int dev = 0; dev < 32; dev++) {
-        uint32_t id = pci_read(PCI_ADDR(0, dev, 0, 0));
-        uint32_t vid = id & 0xFFFF;
-        uint32_t did = (id >> 16) & 0xFFFF;
-        if (vid == 0x1234 && did == 0x1111) {
-            fb_addr = pci_read(PCI_ADDR(0, dev, 0, 0x10));
-            if (fb_addr & 1)
-                fb_addr = pci_read(PCI_ADDR(0, dev, 0, 0x18));
-            fb_addr &= ~0xF;
-            break;
-        }
-    }
-
-    if (fb_addr) {
-        vbe_set(800, 600, 32);
-        fb_init_ptr((uint32_t*)fb_addr, 800, 600, 800 * 4, 32);
-        return 0;
     }
 
     return -1;
@@ -422,6 +389,20 @@ static void boot_screen(void)
             ly += 18;
             next_msg++;
         }
+        /* Show current resolution */
+        char res[32]; int ri = 0;
+        int w = fb_w, h = fb_h;
+        if (w >= 1000) { res[ri++] = '0' + (w/1000)%10; }
+        if (w >= 100)  { res[ri++] = '0' + (w/100)%10; }
+        if (w >= 10)   { res[ri++] = '0' + (w/10)%10; }
+        res[ri++] = '0' + w%10;
+        res[ri++] = 'x';
+        if (h >= 1000) { res[ri++] = '0' + (h/1000)%10; }
+        if (h >= 100)  { res[ri++] = '0' + (h/100)%10; }
+        if (h >= 10)   { res[ri++] = '0' + (h/10)%10; }
+        res[ri++] = '0' + h%10;
+        res[ri] = 0;
+        fb_txt(cx - s_len(res) * 4, py + ph - 30, res, 0x5A5A7A, panel_c);
         fb_flip();
         for (volatile int d = 0; d < 40000; d++);
     }
@@ -429,11 +410,12 @@ static void boot_screen(void)
     int h, m, s, t0;
     rtc_read(&h, &m, &s);
     t0 = h * 3600 + m * 60 + s;
-    for (;;) {
+    for (int wait = 0; wait < 400; wait++) {
         rtc_read(&h, &m, &s);
         int t = h * 3600 + m * 60 + s;
         if (t < t0) t += 86400;
         if (t - t0 >= 2) break;
+        for (volatile int d = 0; d < 100000; d++);
     }
 }
 
@@ -575,7 +557,10 @@ rsdp_found:;
 void kmain(uint32_t magic, void *mbinfo)
 {
     mb_magic = magic; mb_info = mbinfo;
-    if (fb_init(magic, mbinfo) < 0) return;
+    if (fb_init(magic, mbinfo) < 0) {
+        /* No framebuffer available — halt */
+        for (;;) asm("hlt");
+    }
 
     boot_screen();
     mouse_init();
@@ -583,6 +568,7 @@ void kmain(uint32_t magic, void *mbinfo)
     detect_cpu();
     parse_memory(magic, mbinfo);
     parse_initrd(magic, mbinfo);
+    fat_mount();
     {
         int h, m, s;
         rtc_read(&h, &m, &s);

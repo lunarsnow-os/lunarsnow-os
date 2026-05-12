@@ -1,9 +1,24 @@
 #include "../lunarsnow.h"
+#include "../fat.h"
 
-typedef struct { char name[64]; uint8_t *data; uint32_t size; } VF;
+/* Viewer always copies file data into a per-window buffer */
+typedef struct { char name[64]; uint8_t data[16384]; uint32_t size; } VF;
 
 static VF vf_pool[MAX_W];
 static int vf_n;
+
+static int read_any(const char *name, uint8_t *buf, uint32_t *size_out)
+{
+    uint32_t sz;
+    uint8_t *p = file_read(name, &sz);
+    if (p) {
+        if (sz > 16384) sz = 16384;
+        mcpy(buf, p, sz);
+        *size_out = sz;
+        return 0;
+    }
+    return fat_read_file(name, buf, size_out);
+}
 
 static int max_line_len(const uint8_t *data, uint32_t size)
 {
@@ -26,18 +41,20 @@ static void draw(int wi)
     VF *v = (VF *)w->userdata;
     int wx = w->x + 12, wy = w->y + 28;
 
-    if (!v->data) {
-        v->data = file_read(v->name, &v->size);
-        if (!v->data) {
+    if (!v->size) {
+        if (read_any(v->name, v->data, &v->size) < 0) {
             fb_txt(wx, wy, "Error: file not found", 0xFF4444, w->bg);
             return;
         }
+        /* Auto-size width to longest line */
         int longest = max_line_len(v->data, v->size);
         int nw = longest * 8 + 36;
         if (nw < 160) nw = 160;
         if (nw > fb_w - 60) nw = fb_w - 60;
         if (nw != w->w) {
             w->w = nw;
+            /* Re-center close button */
+            wins[wi].btns[0].x = nw / 2 - 30;
             gui_set_dirty();
         }
     }
@@ -63,9 +80,12 @@ static void draw(int wi)
 
 void prog_viewfile(const char *name)
 {
-    uint32_t fsize;
-    uint8_t *fdata = file_read(name, &fsize);
-    int longest = fdata ? max_line_len(fdata, fsize) : 40;
+    /* Pre-read to get width */
+    uint8_t tmp[16384];
+    uint32_t sz;
+    int has_file = (read_any(name, tmp, &sz) == 0);
+
+    int longest = has_file ? max_line_len(tmp, sz) : 40;
     int w = longest * 8 + 36;
     if (w < 160) w = 160;
     if (w > fb_w - 60) w = fb_w - 60;
@@ -74,14 +94,19 @@ void prog_viewfile(const char *name)
     int y = 60 + (vf_n % 4) * 20;
     if (x + w > fb_w - 10) x = fb_w - w - 10;
     if (x < 10) x = 10;
-    vf_n++;
+    vf_n = (vf_n + 1) % MAX_W;
 
     int wi = gui_wnew(name, x, y, w, 400);
-    VF *v = &vf_pool[vf_n % MAX_W];
+    VF *v = &vf_pool[vf_n];
     wins[wi].userdata = v;
     s_cpy(v->name, name, sizeof(v->name));
-    v->data = 0;
     v->size = 0;
+
+    /* If we pre-read, store data now */
+    if (has_file) {
+        mcpy(v->data, tmp, sz);
+        v->size = sz;
+    }
 
     gui_wbtn(wi, "Close", w / 2 - 30, 340, 60, 26, app_close);
     wins[wi].draw = draw;

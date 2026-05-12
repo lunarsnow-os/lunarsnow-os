@@ -2,3 +2,5 @@
 *.elf
 *.iso
 iso/
+fat_disk.raw
+initrd.tar

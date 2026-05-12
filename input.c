@@ -123,12 +123,12 @@ static void mouse_process(uint8_t data)
 
 static void mouse_wait_wr(void)
 {
-    for (int t = 0; t < 10000 && (inb(0x64) & 2); t++);
+    for (int t = 0; t < 100000 && (inb(0x64) & 2); t++);
 }
 
 static void mouse_wait_rd(void)
 {
-    for (int t = 0; t < 10000 && !(inb(0x64) & 1); t++);
+    for (int t = 0; t < 100000 && !(inb(0x64) & 1); t++);
 }
 
 void mouse_init(void)

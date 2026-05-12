@@ -5,7 +5,7 @@ CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -W
 ASFLAGS = --64
 LDFLAGS = -m elf_x86_64 -T linker.ld
 
-OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
+OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o disk.o fat.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
 
 all: lunarsnow.elf
 
@@ -19,21 +19,52 @@ lunarsnow.elf: $(OBJS) linker.ld
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f *.o lunarsnow.elf lunarsnow.iso initrd.tar
+	rm -f *.o lunarsnow.elf lunarsnow.iso initrd.tar fat_disk.raw
 	rm -f progs/*.o
 	rm -rf iso/
 
-run: lunarsnow.iso
-	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M
+fat_disk.raw: $(wildcard initrd/*) create_fat_disk.sh
+	bash create_fat_disk.sh
 
-run-vnc: lunarsnow.iso
-	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M -vnc :0
+# QEMU base config (override QEMU_OPTS= for extra flags)
+QEMU_BASE = -cdrom lunarsnow.iso -m 512M -drive file=fat_disk.raw,format=raw,if=ide -boot order=d
 
-run-sdl: lunarsnow.iso
-	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M -display sdl
+run: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) $(QEMU_OPTS)
 
-run-gtk: lunarsnow.iso
-	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M -display gtk
+run-vnc: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -vnc :0 $(QEMU_OPTS)
+
+run-sdl: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -display sdl $(QEMU_OPTS)
+
+run-gtk: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -display gtk $(QEMU_OPTS)
+
+# UEFI boot (OVMF)
+OVMF_CODE = /usr/share/edk2/ovmf/OVMF_CODE.fd
+OVMF_VARS = /usr/share/edk2/ovmf/OVMF_VARS.fd
+
+run-uefi: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -bios $(OVMF_CODE) $(QEMU_OPTS)
+
+run-uefi-vnc: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -vnc :0 -bios $(OVMF_CODE) $(QEMU_OPTS)
+
+run-uefi-sdl: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -display sdl -bios $(OVMF_CODE) $(QEMU_OPTS)
+
+run-uefi-gtk: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -display gtk -bios $(OVMF_CODE) $(QEMU_OPTS)
+
+# UEFI boot with writable varstore
+OVMF_VARS_COPY = /tmp/ovmf_vars.fd
+run-uefi-vars: lunarsnow.iso fat_disk.raw
+	cp $(OVMF_VARS) $(OVMF_VARS_COPY)
+	qemu-system-x86_64 $(QEMU_BASE) \
+	  -drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+	  -drive if=pflash,format=raw,file=$(OVMF_VARS_COPY) \
+	  $(QEMU_OPTS)
 
 iso: lunarsnow.iso
 
@@ -46,11 +77,17 @@ lunarsnow.iso: lunarsnow.elf initrd.tar
 	mkdir -p iso/boot/grub
 	cp lunarsnow.elf iso/boot/
 	cp initrd.tar iso/boot/
-	printf 'set timeout=0\nset default=0\nset gfxpayload=800x600x32\nmenuentry "LunarSnow OS" {\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}' > iso/boot/grub/grub.cfg
+	printf 'set timeout=5\nset default=0\ninsmod all_video\nmenuentry "LunarSnow OS (auto)" {\n  set gfxpayload=keep\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}\nmenuentry "LunarSnow OS (1024x768)" {\n  set gfxpayload=1024x768x32\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}\nmenuentry "LunarSnow OS (800x600)" {\n  set gfxpayload=800x600x32\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}' > iso/boot/grub/grub.cfg
 	$(GRUB_MKRESCUE) -o lunarsnow.iso iso/
 
-run-iso: lunarsnow.iso
-	qemu-system-x86_64 -cdrom lunarsnow.iso -m 512M
+run-iso: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) $(QEMU_OPTS)
+
+# Usage: make usb DEVICE=/dev/sdX  (e.g. /dev/sdb — CUIDADO: apaga tudo!)
+usb: lunarsnow.iso
+	@echo "Writing lunarsnow.iso to $(DEVICE)..."
+	dd if=lunarsnow.iso of=$(DEVICE) bs=1M status=progress
+	@echo "Done. Boot from $(DEVICE) on real hardware."
 
 # Usage: make remote REPO=org/repo
 remote:

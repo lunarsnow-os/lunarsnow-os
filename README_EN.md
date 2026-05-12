@@ -1,6 +1,8 @@
 # LunarSnow OS
 
-A bare-metal graphical system that boots directly in QEMU (no OS).
+A bare-metal 64-bit graphical OS that boots directly in QEMU (no host OS).
+
+Architecture: **x86_64**, long mode, 1 GB pages.
 
 ## Building
 
@@ -8,151 +10,124 @@ A bare-metal graphical system that boots directly in QEMU (no OS).
 
 | Program | Debian/Ubuntu | Arch | Fedora |
 |---|---|---|---|
-| `gcc` + `ld` (i386) | `gcc` `binutils` | `gcc` `binutils` | `gcc` `binutils` |
+| `gcc` + `ld` (x86_64) | `gcc` `binutils` | `gcc` `binutils` | `gcc` `binutils` |
 | `as` (assembler) | `binutils` | `binutils` | `binutils` |
-| `grub2-mkrescue` | `grub2-common` `xorriso` `mtools` | `grub` `libisoburn` `mtools` | `grub2-tools` `xorriso` `mtools` |
+| `grub-mkrescue` | `grub2-common` `xorriso` `mtools` | `grub` `libisoburn` `mtools` | `grub2-tools` `xorriso` `mtools` |
 | `qemu-system-x86_64` (testing) | `qemu-system-x86` | `qemu-system-x86` | `qemu-system-x86` |
 
 ### Build & Run
 
 ```sh
-make            # builds lunarsnow.elf (multiboot kernel)
-make run        # QEMU with -kernel
-make iso        # generates bootable ISO (lunarsnow.iso)
-make run-iso    # QEMU with ISO
-make clean      # cleans object files
+make              # builds lunarsnow.elf + initrd.tar
+make run          # BIOS + QEMU with ISO + FAT32 disk
+make run-uefi     # UEFI + QEMU (OVMF)
+make run-uefi-gtk # UEFI + QEMU with GTK display
+make iso          # generates bootable ISO (lunarsnow.iso)
+make clean        # cleans objects
 ```
+
+### UEFI
+
+```sh
+make run-uefi-gtk
+```
+
+Requires `edk2-ovmf` package.
 
 ### Real hardware
 
-Write `lunarsnow.iso` to a USB/CD and boot via BIOS. Requires a VESA BIOS
-capable graphics card (handled by GRUB) — works on Pentium II, III, IV and up.
+```sh
+make usb DEVICE=/dev/sdX   # writes ISO to USB (destroys data!)
+```
+
+Boots via BIOS or UEFI. Requires VESA (or UEFI GOP) graphics.
 
 ## Structure
 
 ```
-boot.s              → Multiboot header + entry point (assembly)
+boot.s              → Multiboot2 header + entry point (x86_64 assembly)
 linker.ld           → Linker script (loads at 1 MB)
-kernel.c            → Initialization: PCI, VBE, CMOS, boot screen, event loop
+kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event loop
 ├── fb.c / fb.h         → Framebuffer: pixel, rect, text, flip (double buffer)
-├── input.c / input.h   → Keyboard + PS/2 mouse
+├── input.c / input.h   → PS/2 keyboard + mouse
 ├── gui.c / gui.h       → Window manager, buttons, taskbar, clock, menu, cursor
-├── apps.c / apps.h     → Infrastructure: terminal, calculator, msgbox, callbacks
-├── progs.c / progs.h   → External program registry
+├── apps.c / apps.h     → Terminal, calculator, msgbox, callbacks
+├── progs.c / progs.h   → Program registry
 ├── progs/              → Programs (each in its own .c)
-│   ├── about.c         → About window (CPU, RAM, uptime)
+│   ├── about.c         → About (CPU, RAM, uptime, display resolution)
+│   ├── controlpanel.c  → Control Panel (CPU, display, version)
+│   ├── filemgr.c       → File Manager (initrd + FAT disk)
+│   ├── viewfile.c      → Text viewer (auto-size width)
 │   ├── hello.c         → Hello World demo
 │   ├── inputname.c     → Input Name demo
 │   ├── notepad.c       → Notepad text editor
 │   └── msgboxdemo.c    → MessageBox demo
+├── disk.c / disk.h     → ATA PIO driver (LBA28)
+├── fat.c / fat.h       → FAT32 driver (mount, read, iterate)
+├── initrd/             → Files baked into initrd.tar
+│   ├── boot.txt, meow.txt, hii.txt, ...
 └── lunarsnow.h         → SDK umbrella (includes everything)
 ```
 
-## SDK API
-
-### Drawing (`fb.h`)
-```c
-fb_pixel(x, y, color)              → draw a pixel
-fb_rect(x, y, w, h, color)         → filled rectangle
-fb_chr(x, y, char, fg, bg)         → 8×16 character
-fb_txt(x, y, "text", fg, bg)       → text string
-fb_border(x, y, w, h, color)       → 1px border
-fb_clear(color)                     → clear screen
-fb_flip()                           → show frame (double buffer)
-```
-
-### Input (`input.h`)
-```c
-kb_poll()          → read keyboard/mouse (call once per frame)
-kb_pop()           → return next key (-1 if empty)
-mouse_init()       → initialize PS/2 mouse
-
-mouse_x, mouse_y   → mouse position
-mouse_btn          → button state (bit 0 = left)
-```
-
-### Windows (`gui.h`)
-```c
-gui_wnew("title", x, y, w, h)              → create window, return index
-gui_wbtn(win, "text", x, y, w, h, cb)      → add button
-gui_wclose(win)                              → close window
-gui_render()                                 → draw everything
-gui_mouse_click()                            → handle mouse click
-gui_set_dirty()                              → force full redraw
-
-wins[win].bg = color;                        → set background color
-wins[win].draw = my_func;                    → draw callback (receives win)
-wins[win].on_key = my_func;                  → keyboard callback (receives key)
-```
-
-### MessageBox (`apps.h`)
-```c
-msgbox("title", "message");    → open popup window with OK button
-```
-
-## Current Programs
+## Programs
 
 | Program | File | Description |
 |---|---|---|
-| Terminal | built-in (`apps.c`) | Command line with `help`, `echo`, `about`, `cls`, `time`, `ver`, `shutdown`, `newwin` |
-| Calculator | built-in (`apps.c`) | Basic operations (+, -, ×, ÷) |
-| Notepad | `progs/notepad.c` | Text editor (72 col × 256 lines, auto scroll) |
-| About | `progs/about.c` | System info (CPU, vendor, RAM, uptime) |
+| Terminal | built-in (`apps.c`) | Commands: `help`, `echo`, `cls`, `time`, `ver`, `shutdown`, `newwin` |
+| Calculator | built-in (`apps.c`) | +, -, ×, ÷ |
+| Notepad | `progs/notepad.c` | Text editor (72 col × 256 lines, scroll) |
+| About | `progs/about.c` | CPU, vendor, RAM, uptime, resolution |
+| Control Panel | `progs/controlpanel.c` | System info, version, display |
+| File Manager | `progs/filemgr.c` | Browse initrd + FAT disk files |
+| File Viewer | `progs/viewfile.c` | Auto-sized text viewer |
 | Hello Demo | `progs/hello.c` | Minimal example |
-| Input Name | `progs/inputname.c` | Keyboard input example |
+| Input Name | `progs/inputname.c` | Keyboard input demo |
 | Message Demo | `progs/msgboxdemo.c` | MessageBox demo |
 
-## How to create an external app
+## FAT32 Disk
 
-### 1. Create `progs/my_app.c`
+`make run` attaches `fat_disk.raw` (64 MB, FAT32) to QEMU via IDE.
+The kernel mounts the first FAT32 partition and makes files available
+through File Manager and File Viewer.
 
+```sh
+make fat_disk.raw   # creates disk with files from initrd/
+bash create_fat_disk.sh   # or manually
+```
+
+## Shortcuts
+
+| Key | Action |
+|---|---|
+| Super (Win) | Toggle Start menu |
+| Tab | Navigate windows/buttons |
+| Alt+F4 | Close active window |
+| Escape | Close menu / sub-window |
+| Enter/Space | Activate button / menu item |
+| Arrows | Menu / file list navigation |
+
+## How to create an app
+
+1. Create `progs/my_app.c`:
 ```c
 #include "../lunarsnow.h"
 
-static void draw(int wi)
-{
+static void draw(int wi) {
     Win *w = &wins[wi];
     fb_txt(w->x + 10, w->y + 30, "My App!", C_TTT, w->bg);
 }
 
-void prog_my_app(void)
-{
+void prog_my_app(void) {
     int wi = gui_wnew("My App", 100, 100, 260, 140);
     gui_wbtn(wi, "Close", 100, 80, 60, 26, app_close);
     wins[wi].draw = draw;
 }
 ```
 
-### 2. Register in `progs.c`
-
+2. Register in `progs.c`:
 ```c
 extern void prog_my_app(void);
-
-Prog progs[] = {
-    {"Hello Demo", prog_hello},
-    {"My App",     prog_my_app},
-};
+Prog progs[] = { ..., {"My App", prog_my_app}, };
 ```
 
-### 3. `make` and you're done
-
-The Start menu updates automatically.
-
-### Apps with keyboard
-
-```c
-static void my_key(int k)
-{
-    if (k >= 32 && k <= 126) { /* typing */ }
-    if (k == '\n') { /* execute */ }
-}
-
-void prog_my_app(void)
-{
-    int wi = gui_wnew("App", 100, 100, 400, 300);
-    wins[wi].on_key = my_key;
-    wins[wi].draw = my_draw;
-}
-```
-
-The kernel routes keys automatically to the active window (`act`).
+3. `make` — the Start menu updates automatically.

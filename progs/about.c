@@ -68,17 +68,39 @@ static void draw(int wi)
     }
 
     {
-        int h, m, s, p = 0;
-        extern void rtc_read(int *h, int *m, int *s);
+        int p = 0;
+        const char *u = "Uptime: ";
+        while (*u) buf[p++] = *u++;
+        int h, m, s;
         rtc_read(&h, &m, &s);
         int secs = (h * 3600 + m * 60 + s) - boot_sec_total;
         if (secs < 0) secs += 86400;
         h = secs / 3600; m = (secs % 3600) / 60; s = secs % 60;
-        const char *u = "Uptime: ";
-        while (*u) buf[p++] = *u++;
         buf[p++] = '0' + h / 10; buf[p++] = '0' + h % 10;
         buf[p++] = ':'; buf[p++] = '0' + m / 10; buf[p++] = '0' + m % 10;
         buf[p++] = ':'; buf[p++] = '0' + s / 10; buf[p++] = '0' + s % 10;
+        buf[p] = 0;
+        fb_txt(wx, dy, buf, C_LBL, w->bg);
+        dy += 18;
+    }
+
+    {
+        int p = 0, i;
+        const char *u = "Display: ";
+        while (*u) buf[p++] = *u++;
+        i = fb_w;
+        if (i >= 1000) buf[p++] = '0' + (i/1000)%10;
+        if (i >= 100)  buf[p++] = '0' + (i/100)%10;
+        if (i >= 10)   buf[p++] = '0' + (i/10)%10;
+        buf[p++] = '0' + i%10;
+        buf[p++] = 'x';
+        i = fb_h;
+        if (i >= 1000) buf[p++] = '0' + (i/1000)%10;
+        if (i >= 100)  buf[p++] = '0' + (i/100)%10;
+        if (i >= 10)   buf[p++] = '0' + (i/10)%10;
+        buf[p++] = '0' + i%10;
+        buf[p++] = '@'; buf[p++] = '3'; buf[p++] = '2';
+        buf[p++] = 'b'; buf[p++] = 'p'; buf[p++] = 'p';
         buf[p] = 0;
         fb_txt(wx, dy, buf, C_LBL, w->bg);
     }
