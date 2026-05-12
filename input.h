@@ -5,7 +5,9 @@
 
 #define KEY_UP    256
 #define KEY_DOWN  257
-#define KEY_SUPER 258
+#define KEY_LEFT  258
+#define KEY_RIGHT 259
+#define KEY_SUPER 260
 #define KEY_F4    264
 
 void kb_poll(void);

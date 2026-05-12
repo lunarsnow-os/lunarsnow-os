@@ -74,6 +74,8 @@ void kb_poll(void)
             else if (ext_key) {
                 if (data == 0x48) kb_push(KEY_UP);
                 if (data == 0x50) kb_push(KEY_DOWN);
+                if (data == 0x4B) kb_push(KEY_LEFT);
+                if (data == 0x4D) kb_push(KEY_RIGHT);
                 if (data == 0x5B) kb_push(KEY_SUPER);
                 ext_key = 0;
             } else if (data == 0x3E) {

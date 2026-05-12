@@ -1,14 +1,5 @@
 #include "../lunarsnow.h"
-
-static void str_int(char *buf, int val) {
-    if (val == 0) { buf[0] = '0'; buf[1] = 0; return; }
-    if (val < 0) { buf[0] = '-'; str_int(buf + 1, -val); return; }
-    char tmp[16]; int i = 0;
-    while (val > 0) { tmp[i++] = '0' + (val % 10); val /= 10; }
-    int j = 0;
-    while (i > 0) buf[j++] = tmp[--i];
-    buf[j] = 0;
-}
+#include "../config.h"
 
 static void drawMain(int wi) {
     Win *w = &wins[wi];
@@ -102,18 +93,26 @@ static void drawMain(int wi) {
 
     wy += 6;
     fb_txt(wx, wy, "About", 0x5A7AC0, w->bg); wy += 18;
-    fb_txt(wx + 8, wy, "LunarSnow OS v0.2-alpha x64 edition", C_LBL, w->bg); wy += 16;
-    fb_txt(wx + 8, wy, "LunarUI v0.0-3", C_LBL, w->bg);*/
+    fb_txt(wx + 8, wy, OS_FULL " edition", C_LBL, w->bg); wy += 16;
+    fb_txt(wx + 8, wy, UI_FULL, C_LBL, w->bg);*/
 }
+
+static void disp_set(int w, int h) { vbe_set_mode(w, h, 32); }
+static void ds640(void)  { disp_set(640, 480); }
+static void ds800(void)  { disp_set(800, 600); }
+static void ds1024(void) { disp_set(1024, 768); }
+static void ds720p(void) { disp_set(1280, 720); }
+static void ds1280(void) { disp_set(1280, 1024); }
+static void ds1366(void) { disp_set(1366, 768); }
+static void ds1600(void) { disp_set(1600, 900); }
+static void ds1080(void) { disp_set(1920, 1080); }
 
 void drawMouse(int wi) {
     Win *w = &wins[wi];
-    int wx = w->x + 12, wy = w->y + 28;
-    char buf[64]; int p;
+    int wx = w->x + 12;
 
-    fb_txt(wx, wy, "Mouse Settings", C_TTT, w->bg);
-    fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
-    wy += 34;
+    fb_txt(wx, w->y + 28, "Mouse Settings", C_TTT, w->bg);
+    fb_rect(wx, w->y + 48, w->w - 24, 1, 0x3C50A0);
 }
 
 void drawDisplay(int wi) {
@@ -127,14 +126,21 @@ void drawDisplay(int wi) {
 
     extern int fb_w, fb_h, fb_bpp;
     p = 0;
-    const char *res = "Current resolution: ";
+    const char *res = "Current: ";
     while (*res) buf[p++] = *res++;
     str_int(buf + p, fb_w); while (buf[p]) p++;
     buf[p++] = 'x'; str_int(buf + p, fb_h); while (buf[p]) p++;
     buf[p++] = ' '; buf[p++] = '@'; buf[p++] = ' ';
     str_int(buf + p, fb_bpp); while (buf[p]) p++;
     buf[p++] = 'b'; buf[p++] = 'p'; buf[p++] = 'p'; buf[p] = 0;
-    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 16;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 20;
+
+    if (!vbe_available()) {
+        fb_txt(wx + 8, wy, "VBE not available. Change via GRUB (reboot).", 0xCC4444, w->bg);
+        return;
+    }
+
+    fb_txt(wx + 8, wy, "Available resolutions:", C_TTT, w->bg); wy += 22;
 }
 
 void mouse_settings() {
@@ -143,9 +149,17 @@ void mouse_settings() {
     wins[wi].draw = drawMouse;
 }
 
-void display_settings() {
+void display_settings(void) {
     int wi = gui_wnew("Control Panel - Display", (fb_w - 420) / 2, 50, 420, 380);
-    msgbox("Display Settings", "This section is under construction.");
+    gui_wbtn(wi, "640x480",   10,  82, 86, 28, ds640);
+    gui_wbtn(wi, "800x600",   104, 82, 86, 28, ds800);
+    gui_wbtn(wi, "1024x768",  198, 82, 86, 28, ds1024);
+    gui_wbtn(wi, "1280x720",  302, 82, 86, 28, ds720p);
+    gui_wbtn(wi, "1280x1024", 10,  118, 86, 28, ds1280);
+    gui_wbtn(wi, "1366x768",  104, 118, 86, 28, ds1366);
+    gui_wbtn(wi, "1600x900",  198, 118, 86, 28, ds1600);
+    gui_wbtn(wi, "1920x1080", 302, 118, 86, 28, ds1080);
+    gui_wbtn(wi, "Close", 320, 320, 80, 30, app_close);
     wins[wi].draw = drawDisplay;
 }
 

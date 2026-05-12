@@ -53,6 +53,7 @@ kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event lo
 ├── gui.c / gui.h       → Window manager, buttons, taskbar, clock, menu, cursor
 ├── apps.c / apps.h     → Terminal, calculator, msgbox, callbacks
 ├── progs.c / progs.h   → Program registry
+├── config.h             → Centralized settings (version, name, etc.)
 ├── progs/              → Programs (each in its own .c)
 │   ├── about.c         → About (CPU, RAM, uptime, display resolution)
 │   ├── controlpanel.c  → Control Panel (CPU, display, version)
@@ -61,7 +62,9 @@ kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event lo
 │   ├── hello.c         → Hello World demo
 │   ├── inputname.c     → Input Name demo
 │   ├── notepad.c       → Notepad text editor
-│   └── msgboxdemo.c    → MessageBox demo
+│   ├── msgboxdemo.c    → MessageBox demo
+│   ├── snake.c         → Snake game
+│   └── minesweeper.c   → Minesweeper game
 ├── disk.c / disk.h     → ATA PIO driver (LBA28)
 ├── fat.c / fat.h       → FAT32 driver (mount, read, iterate)
 ├── initrd/             → Files baked into initrd.tar
@@ -83,6 +86,8 @@ kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event lo
 | Hello Demo | `progs/hello.c` | Minimal example |
 | Input Name | `progs/inputname.c` | Keyboard input demo |
 | Message Demo | `progs/msgboxdemo.c` | MessageBox demo |
+| Snake | `progs/snake.c` | Snake game (arrow keys, score, adjustable speed) |
+| Minesweeper | `progs/minesweeper.c` | Minesweeper (9×9, right-click / F key to flag) |
 
 ## FAT32 Disk
 
@@ -104,7 +109,10 @@ bash create_fat_disk.sh   # or manually
 | Alt+F4 | Close active window |
 | Escape | Close menu / sub-window |
 | Enter/Space | Activate button / menu item |
-| Arrows | Menu / file list navigation |
+| Arrows | Menu / file list / game navigation |
+| Right-click | Toggle flag/dig mode in Minesweeper |
+| F | Toggle flag/dig mode in Minesweeper (keyboard) |
+| +/- | Increase/decrease Snake speed |
 
 ## How to create an app
 

@@ -17,6 +17,8 @@ typedef struct {
     void (*draw)(int wi);
     void (*on_key)(int k);
     void (*on_click)(int wi);
+    void (*on_rclick)(int wi);
+    void (*on_close)(int wi);
     void *userdata;
 } Win;
 
@@ -31,6 +33,7 @@ int  gui_menu_count(void);
 void gui_menu_exec(int i);
 void gui_set_dirty(void);
 void gui_update_cursor(void);
+void gui_reset_cursor(void);
 
 /* Colors */
 enum {
@@ -64,5 +67,6 @@ extern int nw, act, run;
 extern int focus_mode, menu_open, menu_focus;
 extern int mouse_drag, mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
 extern int need_render;
+extern void (*gui_tick)(void);
 
 #endif

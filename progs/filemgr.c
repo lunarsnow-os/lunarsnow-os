@@ -54,16 +54,6 @@ static void fm_on_key(int k)
     }
 }
 
-static void fm_str_int(char *buf, int val)
-{
-    if (val == 0) { buf[0] = '0'; buf[1] = 0; return; }
-    char tmp[16]; int i = 0;
-    while (val > 0) { tmp[i++] = '0' + (val % 10); val /= 10; }
-    int j = 0;
-    while (i > 0) buf[j++] = tmp[--i];
-    buf[j] = 0;
-}
-
 static void draw(int wi)
 {
     Win *w = &wins[wi];
@@ -85,7 +75,7 @@ static void draw(int wi)
         while (*fn && pi < 40) buf[pi++] = *fn++;
         buf[pi++] = ' ';
         buf[pi++] = '(';
-        fm_str_int(buf + pi, (int)fm_sizes[i]);
+        str_int(buf + pi, (int)fm_sizes[i]);
         while (buf[pi]) pi++;
         buf[pi++] = ' '; buf[pi++] = 'b'; buf[pi++] = ')';
         buf[pi] = 0;

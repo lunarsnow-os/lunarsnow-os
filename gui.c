@@ -39,6 +39,7 @@ int gui_wnew(const char *t, int x, int y, int w, int h) {
     wins[i].bg = C_WBG; wins[i].tb = C_TAC;
     wins[i].nb = 0; wins[i].fc = 0;
     wins[i].draw = 0; wins[i].on_key = 0; wins[i].on_click = 0;
+    wins[i].on_rclick = 0; wins[i].on_close = 0;
     wins[i].userdata = 0;
     act = i; return i;
 }
@@ -52,6 +53,7 @@ int gui_wbtn(int wi, const char *t, int x, int y, int w, int h, void (*cb)(void)
 
 void gui_wclose(int idx) {
     if (idx < 0 || idx >= nw) return;
+    if (wins[idx].on_close) wins[idx].on_close(idx);
     for (int i = idx; i < nw - 1; i++) mcpy(&wins[i], &wins[i+1], sizeof(Win));
     nw--;
     if (act >= nw && nw > 0) act = nw - 1;
@@ -106,7 +108,10 @@ static const uint8_t curs_img[] = {
 static uint32_t curs_save[CUR_H][CUR_W];
 static int curs_sx = -1, curs_sy = -1;
 
+void gui_reset_cursor(void) { curs_sx = -1; curs_sy = -1; }
+
 int need_render = 1;
+void (*gui_tick)(void);
 void gui_set_dirty(void) { need_render = 1; }
 
 static void curs_restore(void) {
@@ -238,15 +243,23 @@ void gui_render(void) {
     fb_rect(2, fb_h - TB_H + 2, ST_W, TB_H - 4, scol);
     fb_txt(8, fb_h - TB_H + 6, "Start", C_TTT, scol);
 
-    int bx = ST_W + 6;
+    int bx = ST_W + 6, max_bx = fb_w - 32;
     for (int i = 0; i < nw; i++) {
         uint32_t c = (i == act) ? C_TBTNA : C_TBTN;
         int bw = s_len(wins[i].title) * 8 + 12;
         if (bw > 140) bw = 140;
+        if (bx + bw >= max_bx) bw = max_bx - bx - 2;
+        if (bw < 12) break;
         fb_rect(bx, fb_h - TB_H + 2, bw, TB_H - 4, c);
-        fb_txt(bx + 4, fb_h - TB_H + 6, wins[i].title, C_TTT, c);
+        int maxc = (bw - 8) / 8;
+        if (maxc < 1) maxc = 1;
+        char trim[24];
+        s_cpy(trim, wins[i].title, maxc + 1);
+        fb_txt(bx + 4, fb_h - TB_H + 6, trim, C_TTT, c);
         bx += bw + 2;
     }
+    /* Fill remainder of taskbar */
+    fb_rect(bx, fb_h - TB_H + 2, max_bx - bx - 2, TB_H - 4, C_TBAR);
 
     /* Clock */
     int h, m, s; rtc_read(&h, &m, &s);

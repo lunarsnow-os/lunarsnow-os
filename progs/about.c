@@ -1,4 +1,5 @@
 #include "../lunarsnow.h"
+#include "../config.h"
 
 static int about_win = -1;
 
@@ -7,19 +8,6 @@ extern char cpu_vendor[];
 extern char cpu_brand[];
 extern int boot_sec_total;
 extern int cpu_ok;
-extern int cpu_family, cpu_model, cpu_stepping;
-extern char cpu_name[];
-
-static void str_int(char *buf, int val)
-{
-    if (val == 0) { buf[0] = '0'; buf[1] = 0; return; }
-    if (val < 0) { buf[0] = '-'; str_int(buf + 1, -val); return; }
-    char tmp[16]; int i = 0;
-    while (val > 0) { tmp[i++] = '0' + (val % 10); val /= 10; }
-    int j = 0;
-    while (i > 0) buf[j++] = tmp[--i];
-    buf[j] = 0;
-}
 
 static void draw(int wi)
 {
@@ -28,8 +16,8 @@ static void draw(int wi)
     char buf[64];
 
     fb_txt(wx, wy, "Made by: Lesano and Nixxlte :3", C_TTT, w->bg);
-    fb_txt(wx, wy + 18, "OS Version: 0.2-alpha x64 edition", C_LBL, w->bg);
-    fb_txt(wx, wy + 35, "LunarUI Version: 0.0-3", C_LBL, w->bg);
+    fb_txt(wx, wy + 18, "OS Version: " OS_VER " " OS_ARCH " edition", C_LBL, w->bg);
+    fb_txt(wx, wy + 35, UI_FULL, C_LBL, w->bg);
 
     int dy = wy + 60;
     if (cpu_ok) {
@@ -37,12 +25,6 @@ static void draw(int wi)
             int p = 0;
             for (int i = 0; cpu_brand[i] && i < 55; i++) buf[p++] = cpu_brand[i];
             buf[p] = 0;
-            fb_txt(wx, dy, buf, C_LBL, w->bg);
-            dy += 18;
-        } else if (cpu_name[0]) {
-            int pp = 0;
-            for (int i = 0; cpu_name[i]; i++) buf[pp++] = cpu_name[i];
-            buf[pp] = 0;
             fb_txt(wx, dy, buf, C_LBL, w->bg);
             dy += 18;
         }

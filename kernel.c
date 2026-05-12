@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include "lunarsnow.h"
 #include "progs.h"
-#include "font8x16.h"
+#include "config.h"
 #include "fat.h"
 
 /* ================================================================
@@ -74,8 +74,57 @@ static uint32_t pci_read(uint32_t addr)
 }
 
 /* ================================================================
-   BOCHS VBE
+   BOCHS VBE (BGA)
    ================================================================ */
+
+#define VBE_IDX 0x01CE
+#define VBE_DAT 0x01CF
+
+#define VBE_DISPI_INDEX_ID      0
+#define VBE_DISPI_INDEX_XRES    1
+#define VBE_DISPI_INDEX_YRES    2
+#define VBE_DISPI_INDEX_BPP     3
+#define VBE_DISPI_INDEX_ENABLE  4
+
+int vbe_available(void)
+{
+    outw(VBE_IDX, VBE_DISPI_INDEX_ID);
+    outw(VBE_DAT, 0xB0C0);
+    outw(VBE_IDX, VBE_DISPI_INDEX_ID);
+    return inw(VBE_DAT) >= 0xB0C0;
+}
+
+int vbe_set_mode(int w, int h, int bpp)
+{
+    if (!vbe_available()) return -1;
+    if (w > 1920 || h > 1080) return -1;
+    if (bpp != 16 && bpp != 24 && bpp != 32) return -1;
+
+    outw(VBE_IDX, VBE_DISPI_INDEX_ENABLE);
+    outw(VBE_DAT, 0);
+
+    outw(VBE_IDX, VBE_DISPI_INDEX_XRES);
+    outw(VBE_DAT, w);
+    outw(VBE_IDX, VBE_DISPI_INDEX_YRES);
+    outw(VBE_DAT, h);
+    outw(VBE_IDX, VBE_DISPI_INDEX_BPP);
+    outw(VBE_DAT, bpp);
+
+    outw(VBE_IDX, VBE_DISPI_INDEX_ENABLE);
+    outw(VBE_DAT, 0x41);
+
+    uint32_t *addr = fb_get_addr();
+    if (!addr) return -1;
+
+    int pitch = w * (bpp / 8);
+    fb_init_ptr(addr, w, h, pitch, bpp);
+    fb_clear(0);
+    gui_reset_cursor();
+    if (mouse_x >= fb_w) mouse_x = fb_w - 1;
+    if (mouse_y >= fb_h) mouse_y = fb_h - 1;
+    need_render = 1;
+    return 0;
+}
 
 
 
@@ -106,37 +155,8 @@ char cpu_vendor[16];
 char cpu_brand[64];
 int boot_sec_total;
 int cpu_ok;
-int cpu_family, cpu_model, cpu_stepping;
-char cpu_name[32];
 static uint32_t mb_magic;
 static void *mb_info;
-
-static const char *cpu_model_name(void)
-{
-    switch (cpu_family) {
-    case 3:  return "Intel 386";
-    case 4:  return "Intel 486";
-    case 5:
-        if (cpu_model >= 4) return "Pentium MMX";
-        return "Pentium";
-    case 6:
-        switch (cpu_model) {
-        case 1:  return "Pentium Pro";
-        case 3:  return "Pentium II";
-        case 5:  return "Pentium II / Xeon";
-        case 6:  return "Celeron";
-        case 7:  return "Pentium III";
-        case 8:  return "Pentium III (Coppermine)";
-        case 10: return "Pentium III Xeon";
-        case 11: return "Pentium III (Tualatin)";
-        case 13: return "Celeron M";
-        case 14: return "Pentium M";
-        default: return "P6 family";
-        }
-    case 15: return "Pentium 4";
-    default: return 0;
-    }
-}
 
 /* ================================================================
    CPU DETECTION (CPUID)
@@ -158,15 +178,8 @@ static void detect_cpu(void)
     *(uint32_t*)(cpu_vendor + 8) = c;
     cpu_vendor[12] = 0;
 
-    /* Get Family/Model/Stepping from standard leaf 1 */
+    /* Verify CPUID leaf 1 exists */
     asm volatile("cpuid" : "=a"(a) : "a"(1));
-    cpu_stepping = a & 0xF;
-    cpu_model = (a >> 4) & 0xF;
-    cpu_family = (a >> 8) & 0xF;
-
-    /* Look up CPU model name */
-    cpu_name[0] = 0;
-    { const char *n = cpu_model_name(); if (n) s_cpy(cpu_name, n, 31); }
 
     cpu_ok = 1;
 
@@ -317,7 +330,7 @@ void file_iterate(void (*cb)(const char *name, uint32_t size))
 
 static int fb_init(uint32_t magic, void *mbinfo)
 {
-    /* Try multiboot2 framebuffer (GRUB provides this in both BIOS and UEFI) */
+    /* Multiboot2 framebuffer */
     if (magic == 0x36D76289) {
         uint8_t *tag = mb2_find_tag(mbinfo, 8);
         if (tag) {
@@ -326,6 +339,24 @@ static int fb_init(uint32_t magic, void *mbinfo)
             uint32_t w = *(uint32_t*)(tag + 20);
             uint32_t h = *(uint32_t*)(tag + 24);
             uint8_t bpp = *(tag + 28);
+            if ((bpp == 16 || bpp == 24 || bpp == 32) && w >= 640 && h >= 480) {
+                fb_init_ptr((uint32_t*)(uintptr_t)a, (int)w, (int)h, (int)pitch, bpp);
+                return 0;
+            }
+        }
+    }
+
+    /* Multiboot v1 framebuffer */
+    if (magic == 0x2BADB002) {
+        uint32_t flags = *(uint32_t*)mbinfo;
+        if (flags & (1 << 12)) {
+            uint32_t a_lo = *(uint32_t*)((uint8_t*)mbinfo + 104);
+            uint32_t a_hi = *(uint32_t*)((uint8_t*)mbinfo + 108);
+            uint64_t a = ((uint64_t)a_hi << 32) | a_lo;
+            uint32_t pitch = *(uint32_t*)((uint8_t*)mbinfo + 112);
+            uint32_t w = *(uint32_t*)((uint8_t*)mbinfo + 116);
+            uint32_t h = *(uint32_t*)((uint8_t*)mbinfo + 120);
+            uint8_t bpp = *(uint8_t*)((uint8_t*)mbinfo + 124);
             if ((bpp == 16 || bpp == 24 || bpp == 32) && w >= 640 && h >= 480) {
                 fb_init_ptr((uint32_t*)(uintptr_t)a, (int)w, (int)h, (int)pitch, bpp);
                 return 0;
@@ -352,11 +383,11 @@ static void boot_screen(void)
     fb_rect(px, py, pw, ph, panel_c);
     fb_border(px, py, pw, ph, 0x3C50A0);
 
-    char *title = "LunarSnow OS x64 Edition";
+    char *title = OS_NAME " x64 Edition";
     int tx = cx - s_len(title) * 4;
     fb_txt(tx, py + 30, title, 0xE6E6F0, panel_c);
 
-    char *ver = "v0.2-alpha x64";
+    char *ver = OS_VER " " OS_ARCH;
     int vx = cx - s_len(ver) * 4;
     fb_txt(vx, py + 54, ver, 0x5A5A7A, panel_c);
 
@@ -420,7 +451,24 @@ static void boot_screen(void)
 }
 
 /* ================================================================
-   ACPI S5 + PIIX4 poweroff
+   ANIMATION
+   ================================================================ */
+
+static void curtain_close(void)
+{
+    if (fb_w <= 0 || fb_h <= 0) return;
+    for (int i = 0; i < fb_h / 2; i += 4) {
+        fb_rect(0, i, fb_w, 4, 0x000000);
+        fb_rect(0, fb_h - i - 4, fb_w, 4, 0x000000);
+        fb_flip();
+        for (volatile int d = 0; d < 15000; d++);
+    }
+    fb_clear(0);
+    fb_flip();
+}
+
+/* ================================================================
+   ACPI S5 + PIIX4 poweroff + ACPI Reset
    ================================================================ */
 
 static void piix4_poweroff(void)
@@ -432,7 +480,12 @@ static void piix4_poweroff(void)
         uint16_t did = (vid_did >> 16) & 0xFFFF;
         int known = (did == 0x7113 || did == 0x7000 || did == 0x7110 ||
                      did == 0x122E || did == 0x2410 || did == 0x2420 ||
-                     did == 0x2440 || did == 0x2480 || did == 0x24C0);
+                     did == 0x2440 || did == 0x2480 || did == 0x24C0 ||
+                     did == 0x27B0 || did == 0x27B8 || did == 0x27B9 ||
+                     did == 0x2810 || did == 0x2811 || did == 0x2812 ||
+                     did == 0x2814 || did == 0x2815 ||
+                     did == 0x2910 || did == 0x2912 || did == 0x2914 ||
+                     did == 0x2916 || did == 0x2918 || did == 0x8119);
         if (!known) continue;
         for (int func = 0; func < 4; func++) {
             uint32_t vd = pci_read(PCI_ADDR(0, dev, func, 0));
@@ -518,10 +571,10 @@ rsdp_found:;
     uint32_t fadt_len = *(volatile uint32_t*)(uintptr_t)(fadt_addr + 4);
     if (fadt_len < 72) return;
 
-    uint32_t pm1a_cnt = *(volatile uint32_t*)(uintptr_t)(fadt_addr + 64);
+    uint32_t pm1a_cnt = *(volatile uint32_t*)(uintptr_t)(fadt_addr + 68);
     if (pm1a_cnt < 0x400 || pm1a_cnt > 0x1000) return;
 
-    uint32_t pm1b_cnt = *(volatile uint32_t*)(uintptr_t)(fadt_addr + 68);
+    uint32_t pm1b_cnt = *(volatile uint32_t*)(uintptr_t)(fadt_addr + 72);
 
     uint16_t pm1a_cur = inw((uint16_t)pm1a_cnt);
     if (!(pm1a_cur & 1)) {
@@ -548,6 +601,85 @@ rsdp_found:;
     outw((uint16_t)pm1a_cnt, val);
     if (pm1b_cnt && pm1b_cnt <= 0xFFFF) outw((uint16_t)pm1b_cnt, val);
     for (volatile int d = 0; d < 30000; d++);
+}
+
+/* ================================================================
+   ACPI RESET (for reboot)
+   ================================================================ */
+
+static void acpi_reset(void)
+{
+    uint32_t sig0 = 0x20445352;
+    uint32_t sig1 = 0x20525450;
+    uint32_t addr = 0;
+
+    if (mb_magic == 0x36D76289) {
+        uint8_t *tag = (uint8_t*)mb2_find_tag(mb_info, 20);
+        if (tag) {
+            uint8_t *rsdp = tag + 8;
+            uint8_t sum = 0;
+            for (int i = 0; i < 20; i++) sum += rsdp[i];
+            if (sum == 0) { addr = (uint32_t)(uintptr_t)rsdp; goto rf; }
+        }
+    }
+
+    uint16_t ebda_seg;
+    asm volatile("movw 0x40E, %0" : "=r"(ebda_seg));
+    uint32_t ebda = (uint32_t)ebda_seg << 4;
+    if (ebda >= 0x80000 && ebda <= 0x9F000) {
+        for (uint32_t p = ebda; p < ebda + 0x400; p += 16) {
+            volatile uint32_t *pp = (volatile uint32_t*)(uintptr_t)p;
+            if (pp[0] == sig0 && pp[1] == sig1) {
+                uint8_t sum = 0;
+                for (int i = 0; i < 20; i++) sum += ((volatile uint8_t*)(uintptr_t)p)[i];
+                if (sum == 0) { addr = p; goto rf; }
+            }
+        }
+    }
+
+    for (uint32_t p = 0xE0000; p < 0xFFFFF; p += 16) {
+        volatile uint32_t *pp = (volatile uint32_t*)(uintptr_t)p;
+        if (pp[0] == sig0 && pp[1] == sig1) {
+            uint8_t sum = 0;
+            for (int i = 0; i < 20; i++) sum += ((volatile uint8_t*)(uintptr_t)p)[i];
+            if (sum == 0) { addr = p; goto rf; }
+        }
+    }
+    return;
+
+rf:;
+    uint32_t rsdt_addr = *(volatile uint32_t*)(uintptr_t)(addr + 16);
+    if (rsdt_addr < 0x1000 || rsdt_addr > 0xFFF00000) return;
+
+    volatile uint32_t *rsdt = (volatile uint32_t*)(uintptr_t)rsdt_addr;
+    uint32_t rsdt_len = rsdt[1];
+    if (rsdt_len < 36 || rsdt_len > 0x10000) return;
+    uint32_t entries = (rsdt_len - 36) / 4;
+
+    uint32_t fadt_addr = 0;
+    for (uint32_t i = 0; i < entries; i++) {
+        uint32_t ptr = rsdt[9 + i];
+        if (ptr < 0x1000 || ptr > 0xFFF00000) continue;
+        volatile uint32_t *hdr = (volatile uint32_t*)(uintptr_t)ptr;
+        if (hdr[0] == 0x50434146) { fadt_addr = ptr; break; }
+    }
+    if (fadt_addr == 0) return;
+
+    uint32_t fadt_len = *(volatile uint32_t*)(uintptr_t)(fadt_addr + 4);
+    if (fadt_len < 132) return;
+
+    uint8_t reset_as = *(volatile uint8_t*)(uintptr_t)(fadt_addr + 116);
+    uint64_t reset_addr = *(volatile uint64_t*)(uintptr_t)(fadt_addr + 120);
+    uint8_t reset_val = *(volatile uint8_t*)(uintptr_t)(fadt_addr + 128);
+
+    if (reset_addr == 0 || reset_val == 0) return;
+
+    if (reset_as == 1) {
+        outb((uint16_t)reset_addr, reset_val);
+    } else if (reset_as == 0) {
+        volatile uint8_t *p = (volatile uint8_t*)(uintptr_t)reset_addr;
+        *p = reset_val;
+    }
 }
 
 /* ================================================================
@@ -594,6 +726,11 @@ void kmain(uint32_t magic, void *mbinfo)
         /* Mouse button transition */
         if ((mouse_btn & 1) && !(prev_btn & 1)) {
             gui_mouse_click();
+            need_render = 1;
+        }
+        if ((mouse_btn & 2) && !(prev_btn & 2)) {
+            if (act >= 0 && act < nw && wins[act].on_rclick)
+                wins[act].on_rclick(act);
             need_render = 1;
         }
         if (mouse_drag && !(mouse_btn & 1))
@@ -676,13 +813,20 @@ void kmain(uint32_t magic, void *mbinfo)
         } else if (mouse_moved) {
             gui_update_cursor();
         }
+
+        if (gui_tick) gui_tick();
     }
 
     if (run == -1) {
-        /* Reboot */
-        fb_clear(0x000000);
+        curtain_close();
         int dy = 10;
         #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
+        DBG("Reboot: ACPI reset...");
+        acpi_reset();
+        for (volatile int d = 0; d < 30000; d++);
+        DBG("Reboot: keyboard reset...");
+        outb(0x64, 0xFE);
+        for (volatile int d = 0; d < 30000; d++);
         DBG("Reboot: triple fault...");
         __asm__ __volatile__(
             "pushq $0\n\t"
@@ -691,8 +835,6 @@ void kmain(uint32_t magic, void *mbinfo)
             "ud2\n\t"
             : : : "memory"
         );
-        DBG("Reboot: keyboard reset...");
-        outb(0x64, 0xFE);
         for (volatile int d = 0; d < 30000; d++);
         DBG("Reboot: ALL FAILED, halting");
         for (;;) asm("hlt");
@@ -700,7 +842,7 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     /* Shutdown */
-    fb_clear(0x000000);
+    curtain_close();
     int dy = 10;
     #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
     DBG("Shutdown: PIIX4...");

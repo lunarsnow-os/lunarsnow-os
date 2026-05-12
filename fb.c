@@ -5,7 +5,7 @@
 int fb_w, fb_h, fb_pch, fb_bpp;
 uint32_t *sbuf;
 static uint32_t *fb;
-static uint32_t shadow[800 * 600];
+static uint32_t shadow[1920 * 1080];
 
 void fb_init_ptr(uint32_t *addr, int w, int h, int pch, int bpp)
 {
@@ -118,6 +118,8 @@ void fb_clear(uint32_t c)
     fb_rect(0, 0, fb_w, fb_h, c);
 }
 
+uint32_t *fb_get_addr(void) { return fb; }
+
 int s_len(const char *s)
 {
     int n = 0; while (s[n]) n++; return n;
@@ -141,4 +143,15 @@ int s_cmp(const char *a, const char *b)
 {
     while (*a && *a == *b) { a++; b++; }
     return *(unsigned char*)a - *(unsigned char*)b;
+}
+
+void str_int(char *buf, int val)
+{
+    if (val == 0) { buf[0] = '0'; buf[1] = 0; return; }
+    if (val < 0) { buf[0] = '-'; str_int(buf + 1, -val); return; }
+    char tmp[16]; int i = 0;
+    while (val > 0) { tmp[i++] = '0' + (val % 10); val /= 10; }
+    int j = 0;
+    while (i > 0) buf[j++] = tmp[--i];
+    buf[j] = 0;
 }

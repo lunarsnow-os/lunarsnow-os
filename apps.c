@@ -3,6 +3,7 @@
 #include "fb.h"
 #include "input.h"
 #include "gui.h"
+#include "config.h"
 
 static int ccount;
 
@@ -73,7 +74,7 @@ static void term_exec(void)
         buf[bi++] = ':'; buf[bi++] = '0' + s / 10; buf[bi++] = '0' + s % 10;
         buf[bi] = 0; term_add(buf);
     }
-    else if (match(cmd, "ver"))     term_add("LunarSnow OS v0.2-alpha x64");
+    else if (match(cmd, "ver"))     term_add(OS_FULL);
     else if (match(cmd, "shutdown")) run = 0;
     else if (match(cmd, "newwin"))  cb_new();
     else                            term_add("unknown command (try help)");

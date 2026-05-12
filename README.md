@@ -53,6 +53,7 @@ kernel.c            → Inicialização: PCI, framebuffer, RTC, ACPI, boot scree
 ├── gui.c / gui.h       → Gestor de janelas, botões, taskbar, relógio, menu, cursor
 ├── apps.c / apps.h     → Infraestrutura: terminal, calculadora, msgbox, callbacks
 ├── progs.c / progs.h   → Registo de programas
+├── config.h             → Definições centralizadas (versão, nome, etc.)
 ├── progs/              → Programas (cada um no seu .c)
 │   ├── about.c         → About (CPU, RAM, uptime, resolução)
 │   ├── controlpanel.c  → Painel de Controlo (CPU, vídeo, versão)
@@ -61,7 +62,9 @@ kernel.c            → Inicialização: PCI, framebuffer, RTC, ACPI, boot scree
 │   ├── hello.c         → Hello World demo
 │   ├── inputname.c     → Input Name demo
 │   ├── notepad.c       → Bloco de Notas
-│   └── msgboxdemo.c    → Demonstração de MessageBox
+│   ├── msgboxdemo.c    → Demonstração de MessageBox
+│   ├── snake.c         → Jogo Snake (cobra)
+│   └── minesweeper.c   → Jogo Campo Minado
 ├── disk.c / disk.h     → Driver ATA PIO (LBA28)
 ├── fat.c / fat.h       → Driver FAT32 (mount, read, iterate)
 ├── initrd/             → Ficheiros para o initrd.tar
@@ -83,6 +86,8 @@ kernel.c            → Inicialização: PCI, framebuffer, RTC, ACPI, boot scree
 | Hello Demo | `progs/hello.c` | Exemplo mínimo |
 | Input Name | `progs/inputname.c` | Exemplo com teclado |
 | Message Demo | `progs/msgboxdemo.c` | Demonstração de MessageBox |
+| Snake | `progs/snake.c` | Jogo da cobra (setas, score, velocidade ajustável) |
+| Minesweeper | `progs/minesweeper.c` | Campo minado (9×9, clique direito/tecla F para bandeira) |
 
 ## Disco FAT32
 
@@ -104,7 +109,10 @@ bash create_fat_disk.sh   # ou manualmente
 | Alt+F4 | Fecha janela ativa |
 | Escape | Fecha menu / sub-janela |
 | Enter/Space | Ativa botão / entrada do menu |
-| Setas | Navegação no menu / lista de ficheiros |
+| Setas | Navegação no menu / lista de ficheiros / jogos |
+| Clique direito | Alterna modo bandeira/detetar no Minesweeper |
+| F | Alterna modo bandeira/detetar no Minesweeper (teclado) |
+| +/- | Aumenta/diminui velocidade no Snake |
 
 ## Como criar uma app
 
