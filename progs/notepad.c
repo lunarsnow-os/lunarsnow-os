@@ -37,19 +37,22 @@ static void key(int k)
 static void draw(int wi)
 {
     Win *w = &wins[wi];
-    int wx = w->x + 4, wy = w->y + 22;
-    int ww = w->w - 8, wh = w->h - 26;
-    fb_rect(wx, wy, ww, wh, 0xFFFFFF);
-    int max_rows = wh / 16;
+    int bx = w->x + 2, by = w->y + 20, bw = w->w - 4, bh = w->h - 22;
+    uint32_t bg = 0x141428, fg = C_TTT;
+    fb_rect(bx, by, bw, bh, bg);
+    int pad = 4;
+    int tx = bx + pad, ty = by + pad;
+    int max_rows = (bh - pad * 2) / 16;
     int start = np_cr >= max_rows ? np_cr - max_rows + 1 : 0;
-    int dy = wy;
-    for (int r = start; r <= np_cr && dy < wy + wh; r++) {
-        fb_txt(wx + 4, dy, np_buf[r], 0x000000, 0xFFFFFF);
+    if (start < 0) start = 0;
+    int dy = ty;
+    for (int r = start; r <= np_cr && dy < by + bh - pad; r++) {
+        fb_txt(tx, dy, np_buf[r], fg, bg);
         dy += 16;
     }
-    if (dy < wy + wh && np_cr - start < max_rows) {
-        int cx = wx + 4 + np_cc * 8;
-        fb_rect(cx, dy - 16, 2, 16, 0x000000);
+    if (dy < by + bh - pad && np_cr - start < max_rows) {
+        int cx = tx + np_cc * 8;
+        fb_rect(cx, dy - 16, 2, 16, C_TAC);
     }
 }
 

@@ -12,5 +12,6 @@ uint8_t *file_read(const char *name, uint32_t *size_out);
 void file_iterate(void (*cb)(const char *name, uint32_t size));
 int vbe_available(void);
 int vbe_set_mode(int w, int h, int bpp);
+int vbe_try_set_mode(int w, int h, int bpp);
 
 #endif

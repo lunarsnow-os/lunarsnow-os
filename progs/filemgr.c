@@ -32,7 +32,7 @@ static void fm_click(int wi)
 {
     Win *w = &wins[wi];
     int y = mouse_y;
-    int start_y = w->y + 28;
+    int start_y = w->y + 24;
     int max_visible = (w->h - 80) / 16;
 
     if (y < start_y) return;
@@ -57,7 +57,7 @@ static void fm_on_key(int k)
 static void draw(int wi)
 {
     Win *w = &wins[wi];
-    int wx = w->x + 12, wy = w->y + 28;
+    int wx = w->x + 12, wy = w->y + 24;
     int max_visible = (w->h - 80) / 16;
     char buf[72];
     int drawn = 0;

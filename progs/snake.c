@@ -135,6 +135,10 @@ void prog_snake(void)
     cell = max_cell_x < max_cell_y ? max_cell_x : max_cell_y;
     if (cell < 4) cell = 4;
     if (cell > 20) cell = 20;
+    int mw = fb_w * 4 / 5, mh = fb_h * 4 / 5;
+    while (COLS * cell + 16 > mw || ROWS * cell + 16 > mh)
+        cell--;
+    if (cell < 4) cell = 4;
     gw = COLS * cell;
     gh = ROWS * cell;
     ww = gw + 16;

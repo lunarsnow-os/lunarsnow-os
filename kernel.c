@@ -88,6 +88,7 @@ static uint32_t pci_read(uint32_t addr)
 
 int vbe_available(void)
 {
+    if (fb_type == FB_TYPE_GOP) return 0;
     outw(VBE_IDX, VBE_DISPI_INDEX_ID);
     outw(VBE_DAT, 0xB0C0);
     outw(VBE_IDX, VBE_DISPI_INDEX_ID);
@@ -96,34 +97,42 @@ int vbe_available(void)
 
 int vbe_set_mode(int w, int h, int bpp)
 {
-    if (!vbe_available()) return -1;
     if (w > 1920 || h > 1080) return -1;
     if (bpp != 16 && bpp != 24 && bpp != 32) return -1;
 
-    outw(VBE_IDX, VBE_DISPI_INDEX_ENABLE);
-    outw(VBE_DAT, 0);
+    /* GOP (UEFI) mode: framebuffer set by firmware — cannot change after boot */
+    if (fb_type == FB_TYPE_GOP) return -1;
 
-    outw(VBE_IDX, VBE_DISPI_INDEX_XRES);
-    outw(VBE_DAT, w);
-    outw(VBE_IDX, VBE_DISPI_INDEX_YRES);
-    outw(VBE_DAT, h);
-    outw(VBE_IDX, VBE_DISPI_INDEX_BPP);
-    outw(VBE_DAT, bpp);
+    /* Try Bochs VBE (BGA) first — works in QEMU/VM */
+    if (vbe_available()) {
+        outw(VBE_IDX, VBE_DISPI_INDEX_ENABLE);
+        outw(VBE_DAT, 0);
 
-    outw(VBE_IDX, VBE_DISPI_INDEX_ENABLE);
-    outw(VBE_DAT, 0x41);
+        outw(VBE_IDX, VBE_DISPI_INDEX_XRES);
+        outw(VBE_DAT, w);
+        outw(VBE_IDX, VBE_DISPI_INDEX_YRES);
+        outw(VBE_DAT, h);
+        outw(VBE_IDX, VBE_DISPI_INDEX_BPP);
+        outw(VBE_DAT, bpp);
 
-    uint32_t *addr = fb_get_addr();
-    if (!addr) return -1;
+        outw(VBE_IDX, VBE_DISPI_INDEX_ENABLE);
+        outw(VBE_DAT, 0x41);
 
-    int pitch = w * (bpp / 8);
-    fb_init_ptr(addr, w, h, pitch, bpp);
-    fb_clear(0);
-    gui_reset_cursor();
-    if (mouse_x >= fb_w) mouse_x = fb_w - 1;
-    if (mouse_y >= fb_h) mouse_y = fb_h - 1;
-    need_render = 1;
-    return 0;
+        uint32_t *addr = fb_get_addr();
+        if (!addr) return -1;
+
+        int pitch = w * (bpp / 8);
+        fb_init_ptr(addr, w, h, pitch, bpp);
+        fb_clear(0);
+        gui_reset_cursor();
+        if (mouse_x >= fb_w) mouse_x = fb_w - 1;
+        if (mouse_y >= fb_h) mouse_y = fb_h - 1;
+        need_render = 1;
+        return 0;
+    }
+
+    /* Fallback to real VESA VBE via int 0x10 (real hardware Legacy mode) */
+    return vbe_try_set_mode(w, h, bpp);
 }
 
 
@@ -339,14 +348,16 @@ static int fb_init(uint32_t magic, void *mbinfo)
             uint32_t w = *(uint32_t*)(tag + 20);
             uint32_t h = *(uint32_t*)(tag + 24);
             uint8_t bpp = *(tag + 28);
+            uint8_t ftype = *(tag + 29); /* 1=VBE, 2=GOP */
             if ((bpp == 16 || bpp == 24 || bpp == 32) && w >= 640 && h >= 480) {
                 fb_init_ptr((uint32_t*)(uintptr_t)a, (int)w, (int)h, (int)pitch, bpp);
+                fb_type = (ftype == 2) ? FB_TYPE_GOP : FB_TYPE_VBE;
                 return 0;
             }
         }
     }
 
-    /* Multiboot v1 framebuffer */
+    /* Multiboot v1 framebuffer — always VBE (Legacy BIOS) */
     if (magic == 0x2BADB002) {
         uint32_t flags = *(uint32_t*)mbinfo;
         if (flags & (1 << 12)) {
@@ -359,6 +370,7 @@ static int fb_init(uint32_t magic, void *mbinfo)
             uint8_t bpp = *(uint8_t*)((uint8_t*)mbinfo + 124);
             if ((bpp == 16 || bpp == 24 || bpp == 32) && w >= 640 && h >= 480) {
                 fb_init_ptr((uint32_t*)(uintptr_t)a, (int)w, (int)h, (int)pitch, bpp);
+                fb_type = FB_TYPE_VBE;
                 return 0;
             }
         }
@@ -708,7 +720,6 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     /* Build dynamic menu */
-    gui_menu_add("New Window", cb_new);
     gui_menu_add("Terminal",   cb_term);
     gui_menu_add("Calculator", cb_calc);
     for (int i = 0; i < progs_n; i++) gui_menu_add(progs[i].name, progs[i].init);

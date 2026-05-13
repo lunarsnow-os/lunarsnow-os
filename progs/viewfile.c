@@ -81,7 +81,7 @@ static void draw(int wi)
 void prog_viewfile(const char *name)
 {
     /* Pre-read to get width */
-    uint8_t tmp[16384];
+    static uint8_t tmp[16384];
     uint32_t sz;
     int has_file = (read_any(name, tmp, &sz) == 0);
 

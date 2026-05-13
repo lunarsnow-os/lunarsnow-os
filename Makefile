@@ -5,7 +5,7 @@ CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -W
 ASFLAGS = --64
 LDFLAGS = -m elf_x86_64 -T linker.ld
 
-OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o disk.o fat.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
+OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o disk.o fat.o vbe_real.o vbe_tramp.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
 
 all: lunarsnow.elf
 
@@ -13,6 +13,9 @@ lunarsnow.elf: $(OBJS) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
 %.o: %.s
+	$(AS) $(ASFLAGS) -o $@ $<
+
+%.o: %.S
 	$(AS) $(ASFLAGS) -o $@ $<
 
 %.o: %.c

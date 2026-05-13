@@ -2,7 +2,7 @@
 #include "font8x16.h"
 #include "fb.h"
 
-int fb_w, fb_h, fb_pch, fb_bpp;
+int fb_w, fb_h, fb_pch, fb_bpp, fb_type;
 uint32_t *sbuf;
 static uint32_t *fb;
 static uint32_t shadow[1920 * 1080];

@@ -101,9 +101,9 @@ void fat_iterate(void (*cb)(const char *name, uint32_t size))
     if (!fs.mounted) return;
 
     uint32_t clus = fs.root_clus;
-    uint8_t  buf[512 * 32]; /* max 32 sectors per cluster (16384 bytes) */
+    static uint8_t buf[512 * 32];
     uint32_t clus_bytes = fs.sec_per_clus * 512;
-    char     lfn_buf[512];  /* accumulate LFN */
+    static char lfn_buf[512];
     int      lfn_pos = 0;
 
     while (clus < 0x0FFFFFF8) {
@@ -183,7 +183,7 @@ int fat_read_file(const char *name, uint8_t *buf, uint32_t *size_out)
     if (!fs.mounted) return -1;
 
     uint32_t clus = fs.root_clus;
-    uint8_t  tmp[512 * 32];
+    static uint8_t tmp[512 * 32];
     uint32_t clus_bytes = fs.sec_per_clus * 512;
 
     while (clus < 0x0FFFFFF8) {

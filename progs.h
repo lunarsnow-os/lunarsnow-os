@@ -8,5 +8,6 @@ extern int progs_n;
 
 void prog_viewfile(const char *name);
 void prog_filemgr(void);
+void prog_paint(void);
 
 #endif

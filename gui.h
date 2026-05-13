@@ -26,6 +26,7 @@ typedef struct {
 int  gui_wnew(const char *t, int x, int y, int w, int h);
 int  gui_wbtn(int wi, const char *t, int x, int y, int w, int h, void (*cb)(void));
 void gui_wclose(int idx);
+void gui_wfront(int idx);
 void gui_render(void);
 void gui_mouse_click(void);
 void gui_menu_add(const char *name, void (*cb)(void));
@@ -59,7 +60,8 @@ enum {
 
 #define TB_H  28
 #define ST_W  60
-#define MN_W 160
+#define MN_W 176
+#define MI_H 20
 
 /* GUI state */
 extern Win wins[MAX_W];

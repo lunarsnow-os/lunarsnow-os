@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define OS_NAME    "LunarSnow OS"
-#define OS_VER     "0.2-alpha"
+#define OS_VER     "0.3-alpha"
 #define OS_ARCH    "x64"
 #define OS_FULL    OS_NAME " " OS_VER " " OS_ARCH
 

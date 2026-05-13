@@ -55,14 +55,13 @@ kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event lo
 ├── progs.c / progs.h   → Program registry
 ├── config.h             → Centralized settings (version, name, etc.)
 ├── progs/              → Programs (each in its own .c)
-│   ├── about.c         → About (CPU, RAM, uptime, display resolution)
-│   ├── controlpanel.c  → Control Panel (CPU, display, version)
+│   ├── about.c         → About (CPU, RAM, uptime, resolution, initrd, logo)
+│   ├── controlpanel.c  → Control Panel (mouse, display)
 │   ├── filemgr.c       → File Manager (initrd + FAT disk)
 │   ├── viewfile.c      → Text viewer (auto-size width)
-│   ├── hello.c         → Hello World demo
 │   ├── inputname.c     → Input Name demo
 │   ├── notepad.c       → Notepad text editor
-│   ├── msgboxdemo.c    → MessageBox demo
+│   ├── paint.c         → Paint (mouse drawing, 12-color palette)
 │   ├── snake.c         → Snake game
 │   └── minesweeper.c   → Minesweeper game
 ├── disk.c / disk.h     → ATA PIO driver (LBA28)
@@ -76,16 +75,15 @@ kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event lo
 
 | Program | File | Description |
 |---|---|---|
-| Terminal | built-in (`apps.c`) | Commands: `help`, `echo`, `cls`, `time`, `ver`, `shutdown`, `newwin` |
-| Calculator | built-in (`apps.c`) | +, -, ×, ÷ |
-| Notepad | `progs/notepad.c` | Text editor (72 col × 256 lines, scroll) |
-| About | `progs/about.c` | CPU, vendor, RAM, uptime, resolution |
-| Control Panel | `progs/controlpanel.c` | System info, version, display |
+| Terminal | built-in (`apps.c`) | Commands: `help`, `echo`, `cls`, `time`, `ver`, `shutdown`, `reboot`, `exit` |
+| Calculator | built-in (`apps.c`) | +, -, ×, ÷, keyboard |
+| Notepad | `progs/notepad.c` | Text editor (72 col × 256 lines, dark theme) |
+| About | `progs/about.c` | CPU, vendor, RAM, uptime, resolution, initrd, LunarSnow logo |
+| Control Panel | `progs/controlpanel.c` | Mouse & display settings |
 | File Manager | `progs/filemgr.c` | Browse initrd + FAT disk files |
 | File Viewer | `progs/viewfile.c` | Auto-sized text viewer |
-| Hello Demo | `progs/hello.c` | Minimal example |
 | Input Name | `progs/inputname.c` | Keyboard input demo |
-| Message Demo | `progs/msgboxdemo.c` | MessageBox demo |
+| Paint | `progs/paint.c` | Mouse drawing, 12-color palette |
 | Snake | `progs/snake.c` | Snake game (arrow keys, score, adjustable speed) |
 | Minesweeper | `progs/minesweeper.c` | Minesweeper (9×9, right-click / F key to flag) |
 
@@ -116,7 +114,10 @@ bash create_fat_disk.sh   # or manually
 
 ## How to create an app
 
-1. Create `progs/my_app.c`:
+### 1. Basic file
+
+Create `progs/my_app.c`:
+
 ```c
 #include "../lunarsnow.h"
 
@@ -127,15 +128,143 @@ static void draw(int wi) {
 
 void prog_my_app(void) {
     int wi = gui_wnew("My App", 100, 100, 260, 140);
-    gui_wbtn(wi, "Close", 100, 80, 60, 26, app_close);
     wins[wi].draw = draw;
 }
 ```
 
-2. Register in `progs.c`:
+### 2. Register
+
+In `progs.c`, add:
+
 ```c
 extern void prog_my_app(void);
 Prog progs[] = { ..., {"My App", prog_my_app}, };
 ```
 
-3. `make` — the Start menu updates automatically.
+`make` compiles automatically (wildcard in Makefile) and the Start menu picks it up.
+
+### 3. Available APIs
+
+#### Window (`gui.h`)
+
+```c
+int wi = gui_wnew(title, x, y, width, height);
+```
+
+Returns the window index. Content area starts at `y + 20`.
+
+#### Buttons
+
+```c
+gui_wbtn(wi, "Text", x, y, width, height, callback);
+```
+
+The callback is a `void func(void)` function.
+
+#### Drawing (`fb.h`)
+
+```c
+fb_txt(x, y, "text", fg_color, bg_color);
+fb_chr(x, y, 'A', fg_color, bg_color);
+fb_rect(x, y, width, height, color);
+fb_pixel(x, y, color);
+fb_border(x, y, width, height, color);  // outline only
+```
+
+All coordinates are absolute on screen (`w->x + offset`).
+
+#### Keyboard
+
+```c
+static void key(int k) {
+    if (k == '\n') { /* Enter */ }
+    if (k == 8)     { /* Backspace */ }
+    if (k >= 32 && k <= 126) { /* printable char */ }
+}
+wins[wi].on_key = key;
+```
+
+Arrows: `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT` (defined in `input.h`).
+
+#### Mouse
+
+```c
+static void click(int wi) {
+    int mx = mouse_x, my = mouse_y;  // globals
+    // ...
+}
+wins[wi].on_click = click;
+```
+
+For continuous drawing (e.g., Paint), use `gui_tick`:
+
+```c
+static void tick(void) {
+    if (!(mouse_btn & 1)) return;  // left button
+    int mx = mouse_x, my = mouse_y;
+    // draw...
+    need_render = 1;
+}
+gui_tick = tick;
+```
+
+#### Close
+
+```c
+static void on_close(int wi) { gui_tick = 0; /* cleanup */ }
+wins[wi].on_close = on_close;
+```
+
+#### Per-window data
+
+```c
+wins[wi].userdata = pointer;  // void* — window-specific data
+```
+
+### 4. Colors (`gui.h`)
+
+| Constant | Value | Usage |
+|---|---|---|
+| `C_DSK` | `0x0F0F1C` | desktop background |
+| `C_WBG` | `0x1E1E32` | window body background |
+| `C_TAC` | `0x3C50A0` | active title bar / accents |
+| `C_TIN` | `0x323246` | inactive title bar |
+| `C_BDR` | `0x505078` | window border |
+| `C_BN` | `0x327878` | normal button |
+| `C_BF` | `0x4A9696` | focused button |
+| `C_BT` | `0xC8C8D2` | button text |
+| `C_LBL` | `0xB4B4BE` | label text |
+| `C_TTT` | `0xE6E6F0` | title text (soft white) |
+| `C_TBAR` | `0x16162A` | taskbar |
+| `C_MBG` | `0x1E1E35` | menu background |
+| `C_MFOC` | `0x3C50A0` | focused menu item |
+
+### 5. Full example (with keyboard and close)
+
+```c
+#include "../lunarsnow.h"
+
+static char text[64];
+static int len;
+
+static void draw(int wi) {
+    Win *w = &wins[wi];
+    fb_txt(w->x + 10, w->y + 28, "Type something:", C_TTT, w->bg);
+    fb_rect(w->x + 10, w->y + 48, 200, 18, C_TIN);
+    if (len > 0)
+        fb_txt(w->x + 12, w->y + 49, text, C_TTT, C_TIN);
+}
+
+static void key(int k) {
+    if (k == 8 && len > 0) text[--len] = 0;
+    if (k >= 32 && k <= 126 && len < 63) text[len++] = k;
+    text[len] = 0;
+}
+
+void prog_my_app(void) {
+    int wi = gui_wnew("My App", 100, 100, 300, 140);
+    wins[wi].draw = draw;
+    wins[wi].on_key = key;
+    len = 0; text[0] = 0;
+}
+```

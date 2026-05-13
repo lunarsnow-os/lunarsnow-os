@@ -5,11 +5,9 @@
 #include "gui.h"
 #include "config.h"
 
-static int ccount;
-
 /* forward declarations for callbacks used in term_exec */
+static void cb_close(void);
 void cb_about(void);
-void cb_new(void);
 void cb_reboot(void);
 void msgbox(const char *title, const char *msg);
 
@@ -26,9 +24,12 @@ static int term_len;
 
 static void term_add(const char *s)
 {
-    if (term_cnt < TERM_BUF) term_cnt++;
-    for (int i = 0; i < term_cnt - 1; i++)
-        mcpy(term_lines[i], term_lines[i + 1], TERM_COLS + 1);
+    if (term_cnt < TERM_BUF) {
+        term_cnt++;
+    } else {
+        for (int i = 0; i < TERM_BUF - 1; i++)
+            mcpy(term_lines[i], term_lines[i + 1], TERM_COLS + 1);
+    }
     int j;
     for (j = 0; j < TERM_COLS && s[j]; j++) term_lines[term_cnt - 1][j] = s[j];
     while (j <= TERM_COLS) term_lines[term_cnt - 1][j++] = 0;
@@ -58,7 +59,8 @@ static void term_exec(void)
         term_add("  time         - show time");
         term_add("  ver          - show version");
         term_add("  shutdown     - power off");
-        term_add("  newwin       - new window");
+        term_add("  reboot       - restart");
+        term_add("  exit         - close terminal");
         term_add("  help         - this list");
     }
     else if (match(cmd, "echo"))    term_add(p);
@@ -76,7 +78,8 @@ static void term_exec(void)
     }
     else if (match(cmd, "ver"))     term_add(OS_FULL);
     else if (match(cmd, "shutdown")) run = 0;
-    else if (match(cmd, "newwin"))  cb_new();
+    else if (match(cmd, "exit"))    cb_close();
+    else if (match(cmd, "reboot"))  cb_reboot();
     else                            term_add("unknown command (try help)");
     term_input[0] = 0; term_len = 0;
 }
@@ -94,24 +97,40 @@ static void term_key(int key)
 static void term_draw(int wi)
 {
     Win *w = &wins[wi];
-    int wx = w->x + 4, wy = w->y + 22;
-    uint32_t bg = 0x000000, fg = 0x00CC00;
-    int max_rows = (w->h - 26) / 16;
+    int x = w->x, y = w->y, ww = w->w, hh = w->h;
+    uint32_t bg = 0x0A0A0A, fg = 0x33FF33;
+
+    int bx = x + 2, by = y + 20, bw = ww - 4, bh = hh - 22;
+    fb_rect(bx, by, bw, bh, bg);
+
+    fb_rect(bx, by, bw, 1, 0x000000);
+    fb_rect(bx, by, 1, bh, 0x000000);
+    fb_rect(bx, by + bh - 1, bw, 1, 0x3C3C3C);
+    fb_rect(bx + bw - 1, by, 1, bh, 0x3C3C3C);
+
+    int pad = 4;
+    int tx = bx + pad, ty = by + pad;
+    int max_rows = (bh - pad * 2) / 16;
     if (max_rows < 3) max_rows = 3;
-    fb_rect(wx - 2, wy - 2, w->w - 8, w->h - 24, bg);
 
     int avail = max_rows - 1;
     int start = term_cnt > avail ? term_cnt - avail : 0;
-    int dy = wy;
+    int dy = ty;
     for (int i = start; i < term_cnt; i++, dy += 16) {
         for (int j = 0; j < TERM_COLS && term_lines[i][j]; j++)
-            fb_chr(wx + j * 8, dy, term_lines[i][j], fg, bg);
+            fb_chr(tx + j * 8, dy, term_lines[i][j], fg, bg);
     }
 
-    int px = wx, py = wy + max_rows * 16 - 16;
-    fb_txt(px, py, "> ", 0x00FF00, bg);
+    int px = tx, py = ty + max_rows * 16 - 16;
+    fb_txt(px, py, "$ ", fg, bg);
     for (int j = 0; j < term_len; j++)
         fb_chr(px + 16 + j * 8, py, term_input[j], fg, bg);
+
+    static int cursor_frame = 0;
+    cursor_frame++;
+    if ((cursor_frame / 12) % 2) {
+        fb_rect(px + 16 + term_len * 8, py, 8, 16, fg);
+    }
 }
 
 /* ================================================================
@@ -153,13 +172,26 @@ static void ccM(void) { ccE(); calc_val = calc_cur; calc_op = 3; calc_cur = 0; }
 static void ccD(void) { ccE(); calc_val = calc_cur; calc_op = 4; calc_cur = 0; }
 static void ccC(void) { calc_val = 0; calc_cur = 0; calc_op = 0; calc_disp_upd(); }
 
+static void calc_key(int k)
+{
+    if (k >= '0' && k <= '9') {
+        static void (*cdigs[10])(void) = {cc0,cc1,cc2,cc3,cc4,cc5,cc6,cc7,cc8,cc9};
+        cdigs[k - '0']();
+    } else if (k == '+') ccP();
+    else if (k == '-') ccS();
+    else if (k == '*') ccM();
+    else if (k == '/') ccD();
+    else if (k == '=' || k == '\n') ccE();
+    else if (k == 'c' || k == 'C') ccC();
+}
+
 static void calc_draw(int wi)
 {
     Win *w = &wins[wi];
     int dx = w->x + 10, dy = w->y + 24;
-    fb_rect(dx, dy, 220, 34, 0xFFFFFF);
-    fb_border(dx, dy, 220, 34, 0x888888);
-    fb_txt(dx + 8, dy + 9, calc_disp[0] ? calc_disp : "0", 0x000000, 0xFFFFFF);
+    fb_rect(dx, dy, 220, 34, w->bg);
+    fb_border(dx, dy, 220, 34, 0x3C50A0);
+    fb_txt(dx + 8, dy + 9, calc_disp[0] ? calc_disp : "0", C_TTT, w->bg);
 }
 
 /* ================================================================
@@ -169,27 +201,21 @@ static void calc_draw(int wi)
 static void cb_close(void) { if (act >= 0 && act < nw) gui_wclose(act); }
 void app_close(void) { cb_close(); }
 
-void cb_new(void)
-{
-    ccount++;
-    char title[16]; int i;
-    for (i = 0; "Window"[i]; i++) title[i] = "Window"[i];
-    title[i] = '0' + ccount; title[++i] = 0;
-    int wi = gui_wnew(title, 80 + (ccount % 6) * 30, 80 + (ccount % 5) * 30, 260, 140);
-    gui_wbtn(wi, "Close", 100, 80, 60, 26, cb_close);
-}
-
 void cb_term(void)
 {
     int wi = gui_wnew("Terminal", 120, 80, 580, 400);
     wins[wi].on_key = term_key;
     wins[wi].draw = term_draw;
+    term_cnt = 0;
+    term_add(OS_FULL);
+    term_add("Type 'help' for available commands.");
+    term_add("");
 }
 
 void cb_calc(void)
 {
     int wi = gui_wnew("Calculator", 200, 140, 260, 290);
-    wins[wi].bg = 0xD4D4D4;
+    wins[wi].on_key = calc_key;
     int bx = 8;
     gui_wbtn(wi, "7", bx, 50, 52, 34, cc7);
     gui_wbtn(wi, "8", bx+58, 50, 52, 34, cc8);
@@ -225,14 +251,16 @@ static char msgbox_msg[128];
 static void msgbox_draw(int wi)
 {
     Win *w = &wins[wi];
-    fb_txt(w->x + 16, w->y + 32, msgbox_msg, C_LBL, w->bg);
+    int l = s_len(msgbox_msg);
+    int tx = w->x + (w->w - l * 8) / 2;
+    fb_txt(tx, w->y + 35, msgbox_msg, C_LBL, w->bg);
 }
 
 void msgbox(const char *title, const char *msg)
 {
     s_cpy(msgbox_msg, msg, 127);
-    int wi = gui_wnew(title, 200, 200, 300, 120);
-    gui_wbtn(wi, "OK", 120, 75, 60, 26, cb_close);
+    int wi = gui_wnew(title, 200, 200, 300, 110);
+    gui_wbtn(wi, "OK", 120, 60, 60, 26, cb_close);
     wins[wi].draw = msgbox_draw;
 }
 

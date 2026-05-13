@@ -22,7 +22,10 @@ void str_int(char *buf, int val);
 
 #define RGB(r,g,b) ((uint32_t)(((r)<<16)|((g)<<8)|(b)))
 
-extern int fb_w, fb_h, fb_pch, fb_bpp;
+#define FB_TYPE_VBE 1
+#define FB_TYPE_GOP 2
+
+extern int fb_w, fb_h, fb_pch, fb_bpp, fb_type;
 extern uint32_t *sbuf;
 
 #endif
