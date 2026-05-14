@@ -18,6 +18,7 @@ int  s_len(const char *s);
 void s_cpy(char *d, const char *s, int max);
 void mcpy(void *d, const void *s, int n);
 int  s_cmp(const char *a, const char *b);
+int  s_cmpi(const char *a, const char *b);
 void str_int(char *buf, int val);
 
 #define RGB(r,g,b) ((uint32_t)(((r)<<16)|((g)<<8)|(b)))

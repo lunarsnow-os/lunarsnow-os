@@ -8,6 +8,7 @@
 #include "progs.h"
 
 void rtc_read(int *h, int *m, int *s);
+void rtc_read_date(int *d, int *m, int *y);
 uint8_t *file_read(const char *name, uint32_t *size_out);
 void file_iterate(void (*cb)(const char *name, uint32_t size));
 int vbe_available(void);

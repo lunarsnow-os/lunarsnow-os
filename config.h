@@ -7,7 +7,7 @@
 #define OS_FULL    OS_NAME " " OS_VER " " OS_ARCH
 
 #define UI_NAME    "LunarUI"
-#define UI_VER     "0.0-3"
+#define UI_VER     "0.0-3.1"
 #define UI_FULL    UI_NAME " " UI_VER
 
 #endif

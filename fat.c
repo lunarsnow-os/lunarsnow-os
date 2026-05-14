@@ -105,6 +105,7 @@ void fat_iterate(void (*cb)(const char *name, uint32_t size))
     uint32_t clus_bytes = fs.sec_per_clus * 512;
     static char lfn_buf[512];
     int      lfn_pos = 0;
+    int      lfn_n   = 0;
 
     while (clus < 0x0FFFFFF8) {
         if (read_clus(clus, buf) < 0) return;
@@ -119,26 +120,19 @@ void fat_iterate(void (*cb)(const char *name, uint32_t size))
                 /* Long filename entry */
                 uint8_t seq = e[0] & 0x3F;    /* sequence number (1-20) */
                 if (seq == 0 || seq > 20) continue;
-                /* Store LFN characters (little-endian UTF-16 → ASCII low byte) */
-                int idx = (seq - 1) * 13;
-                for (int i = 0; i < 5; i++)  /* name1[5] at offset 1 */
-                    if (idx + i < 511 && e[1 + i*2]) lfn_buf[idx + i] = e[1 + i*2];
-                for (int i = 0; i < 6; i++)  /* name2[6] at offset 14 */
-                    if (idx + 5 + i < 511 && e[14 + i*2]) lfn_buf[idx + 5 + i] = e[14 + i*2];
-                for (int i = 0; i < 2; i++)  /* name3[2] at offset 28 */
-                    if (idx + 11 + i < 511 && e[28 + i*2]) lfn_buf[idx + 11 + i] = e[28 + i*2];
-                if (e[0] & 0x40) {           /* last LFN entry */
-                    lfn_buf[idx + 13] = 0;
-                    /* Reverse the LFN buffer (entries are in reverse order) */
-                    int len = 0;
-                    while (lfn_buf[len]) len++;
-                    for (int i = 0; i < len / 2; i++) {
-                        char t = lfn_buf[i];
-                        lfn_buf[i] = lfn_buf[len - 1 - i];
-                        lfn_buf[len - 1 - i] = t;
-                    }
-                    lfn_pos = len;
+                if (e[0] & 0x40) {           /* last LFN entry — comes first in dir */
+                    lfn_n = seq;             /* total number of LFN blocks */
+                    lfn_pos = 1;             /* flag: accumulating LFN */
+                    for (int i = 0; i < lfn_n * 13; i++) lfn_buf[i] = 0;
                 }
+                if (!lfn_n) continue;        /* safety: no 0x40 entry seen yet */
+                int base = (lfn_n - seq) * 13;
+                for (int i = 0; i < 5 && base + i < 511; i++)
+                    if (e[1 + i*2]) lfn_buf[base + i] = e[1 + i*2];
+                for (int i = 0; i < 6 && base + 5 + i < 511; i++)
+                    if (e[14 + i*2]) lfn_buf[base + 5 + i] = e[14 + i*2];
+                for (int i = 0; i < 2 && base + 11 + i < 511; i++)
+                    if (e[28 + i*2]) lfn_buf[base + 11 + i] = e[28 + i*2];
                 continue;
             }
 
@@ -150,15 +144,19 @@ void fat_iterate(void (*cb)(const char *name, uint32_t size))
 
             char fname[256];
 
-            if (lfn_pos > 0) {
-                /* Use accumulated LFN */
+            if (lfn_pos) {
+                /* Use accumulated LFN (already in correct order) */
+                int max = lfn_n * 13;
+                if (max > 255) max = 255;
                 int i;
-                for (i = 0; i < lfn_pos && i < 255; i++)
+                for (i = 0; i < max; i++) {
                     fname[i] = lfn_buf[i];
+                    if (!fname[i]) break;
+                }
                 fname[i] = 0;
                 lfn_pos = 0;
             } else {
-                /* Use short filename (8.3) */
+                /* No LFN — use short filename (8.3) */
                 sfntostr(fname, (const char *)e, 255);
                 /* Skip . and .. */
                 if (fname[0] == '.' && (fname[1] == 0 || (fname[1] == '.' && fname[2] == 0)))
@@ -196,11 +194,10 @@ int fat_read_file(const char *name, uint8_t *buf, uint32_t *size_out)
             if (e[0] == 0) return -1;
             if (e[0] == 0xE5 || attr == 0x0F || (attr & 0x08) || (attr & 0x10)) continue;
 
-            /* Check SFN match */
+            /* Match SFN (case-insensitive) */
             char fname[13];
             sfntostr(fname, (const char *)e, 12);
-            if (fname[0] && s_cmp(fname, name) == 0) {
-                /* Found - read the file */
+            if (fname[0] && s_cmpi(fname, name) == 0) {
                 uint32_t eclus = (*(uint16_t *)(e + 20) << 16) | *(uint16_t *)(e + 26);
                 uint32_t fsize = *(uint32_t *)(e + 28);
                 uint32_t remain   = fsize;
@@ -218,8 +215,6 @@ int fat_read_file(const char *name, uint8_t *buf, uint32_t *size_out)
                 if (size_out) *size_out = fsize;
                 return fsize;
             }
-
-            /* Check LFN - for now fall back to SFN matching only */
         }
 
         clus = next_clus(clus);

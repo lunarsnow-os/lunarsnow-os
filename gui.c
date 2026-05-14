@@ -12,6 +12,8 @@ Win wins[MAX_W];
 int nw, act, run;
 int focus_mode, menu_open, menu_focus;
 int mouse_drag, mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
+int close_on_esc;
+int starfield_active;
 
 /* Dynamic menu */
 #define MENU_MAX 16

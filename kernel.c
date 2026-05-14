@@ -60,6 +60,25 @@ void rtc_read(int *h, int *m, int *s)
     *s = bcd2bin(sec);
 }
 
+void rtc_read_date(int *d, int *m, int *y)
+{
+    uint8_t day, mon, yr, cen;
+    int timeout = 0;
+    while (cmos_r(0x0A) & 0x80) {
+        if (++timeout > 10000) { *d = 1; *m = 1; *y = 2025; return; }
+    }
+    day = cmos_r(0x07);
+    mon = cmos_r(0x08);
+    yr  = cmos_r(0x09);
+    cen = cmos_r(0x32);
+    if (cmos_r(0x0A) & 0x80) { rtc_read_date(d, m, y); return; }
+    *d = bcd2bin(day);
+    *m = bcd2bin(mon);
+    int century = bcd2bin(cen);
+    if (century < 20) century = 20;
+    *y = century * 100 + bcd2bin(yr);
+}
+
 /* ================================================================
    PCI
    ================================================================ */
@@ -794,8 +813,14 @@ void kmain(uint32_t magic, void *mbinfo)
                 }
             }
             if (key == 27) {
-                if (menu_open) { menu_open = 0; focus_mode = 1; }
+                if (starfield_active) {
+                    starfield_active = 0;
+                    close_on_esc = 0;
+                    gui_tick = 0;
+                    need_render = 1;
+                } else if (menu_open) { menu_open = 0; focus_mode = 1; }
                 else if (focus_mode != 0) { focus_mode = 0; }
+                else if (close_on_esc) { close_on_esc = 0; gui_wclose(act); }
                 else if (nw > 1) gui_wclose(act);
             }
             if (key == KEY_UP && menu_open)
@@ -818,7 +843,9 @@ void kmain(uint32_t magic, void *mbinfo)
 
         int mouse_moved = (mouse_x != prev_mx || mouse_y != prev_my);
 
-        if (need_render) {
+        if (starfield_active) {
+            /* starfield handles its own rendering in gui_tick */
+        } else if (need_render) {
             gui_render();
             need_render = 0;
         } else if (mouse_moved) {

@@ -99,7 +99,25 @@ int kb_pop(void)
    ================================================================ */
 
 static int mouse_cycle;
-static uint8_t mouse_pkt[3];
+static uint8_t mouse_pkt[4];
+static int mouse_4byte;
+int mouse_wheel;
+
+static void mouse_process_pkt(void)
+{
+    int dx = mouse_pkt[1];
+    int dy = mouse_pkt[2];
+    if (mouse_pkt[0] & 0x10) dx -= 256;
+    if (mouse_pkt[0] & 0x20) dy -= 256;
+    mouse_btn = mouse_pkt[0] & 3;
+    mouse_x += dx * 2; mouse_y -= dy * 2;
+    if (mouse_x < 0) mouse_x = 0;
+    if (mouse_x >= fb_w) mouse_x = fb_w - 1;
+    if (mouse_y < 0) mouse_y = 0;
+    if (mouse_y >= fb_h) mouse_y = fb_h - 1;
+    if (mouse_4byte)
+        mouse_wheel = (int8_t)mouse_pkt[3];
+}
 
 static void mouse_process(uint8_t data)
 {
@@ -108,18 +126,14 @@ static void mouse_process(uint8_t data)
         mouse_pkt[0] = data; mouse_cycle = 1;
     } else if (mouse_cycle == 1) {
         mouse_pkt[1] = data; mouse_cycle = 2;
+    } else if (mouse_cycle == 2) {
+        mouse_pkt[2] = data;
+        if (mouse_4byte) { mouse_cycle = 3; return; }
+        mouse_cycle = 0;
+        mouse_process_pkt();
     } else {
-        mouse_pkt[2] = data; mouse_cycle = 0;
-        int16_t dx = mouse_pkt[1];
-        int16_t dy = mouse_pkt[2];
-        if (mouse_pkt[0] & 0x10) dx -= 256;
-        if (mouse_pkt[0] & 0x20) dy -= 256;
-        mouse_btn = mouse_pkt[0] & 3;
-        mouse_x += dx * 2; mouse_y -= dy * 2;
-        if (mouse_x < 0) mouse_x = 0;
-        if (mouse_x >= fb_w) mouse_x = fb_w - 1;
-        if (mouse_y < 0) mouse_y = 0;
-        if (mouse_y >= fb_h) mouse_y = fb_h - 1;
+        mouse_pkt[3] = data; mouse_cycle = 0;
+        mouse_process_pkt();
     }
 }
 
@@ -133,6 +147,21 @@ static void mouse_wait_rd(void)
     for (int t = 0; t < 100000 && !(inb(0x64) & 1); t++);
 }
 
+static void mouse_send_cmd(uint8_t cmd)
+{
+    outb(0x64, 0xD4); mouse_wait_wr();
+    outb(0x60, cmd);  mouse_wait_rd();
+    inb(0x60);
+}
+
+static void mouse_set_rate(uint8_t rate)
+{
+    mouse_send_cmd(0xF3);
+    outb(0x64, 0xD4); mouse_wait_wr();
+    outb(0x60, rate); mouse_wait_rd();
+    inb(0x60);
+}
+
 void mouse_init(void)
 {
     /* Enable auxiliary device on keyboard controller */
@@ -142,27 +171,29 @@ void mouse_init(void)
     /* Read and modify command byte: enable AUX IRQ and disable AUX clock */
     outb(0x64, 0x20); mouse_wait_rd();
     uint8_t cfg = inb(0x60); mouse_wait_wr();
-    cfg = (cfg | 2) & ~0x20;           /* bit 1 = enable AUX IRQ, bit 5 = enable AUX clock */
+    cfg = (cfg | 2) & ~0x20;
     outb(0x64, 0x60); mouse_wait_wr();
     outb(0x60, cfg);   mouse_wait_wr();
 
-    /* Send defaults to mouse (resets to 3-byte packets, 100 samples/sec) */
-    outb(0x64, 0xD4); mouse_wait_wr();
-    outb(0x60, 0xF6); mouse_wait_rd();
-    inb(0x60);                         /* discard ACK */
+    /* Send defaults to mouse */
+    mouse_send_cmd(0xF6);
 
-    /* Set sample rate to 200/sec for smoother tracking */
-    outb(0x64, 0xD4); mouse_wait_wr();
-    outb(0x60, 0xF3); mouse_wait_rd();
-    inb(0x60);
-    outb(0x64, 0xD4); mouse_wait_wr();
-    outb(0x60, 0xC8); mouse_wait_rd();
-    inb(0x60);
+    /* IntelliMouse detection: set sample rate 200, 100, 80, then read ID */
+    mouse_set_rate(200);
+    mouse_set_rate(100);
+    mouse_set_rate(80);
+    mouse_send_cmd(0xF2);
+    uint8_t id = inb(0x60);
+
+    if (id == 3) {
+        mouse_4byte = 1;
+    } else {
+        mouse_4byte = 0;
+        mouse_set_rate(200);
+    }
 
     /* Enable data reporting */
-    outb(0x64, 0xD4); mouse_wait_wr();
-    outb(0x60, 0xF4); mouse_wait_rd();
-    inb(0x60);
+    mouse_send_cmd(0xF4);
 
     mouse_x = fb_w / 2;
     mouse_y = fb_h / 2;

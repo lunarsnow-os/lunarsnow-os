@@ -69,6 +69,8 @@ extern int nw, act, run;
 extern int focus_mode, menu_open, menu_focus;
 extern int mouse_drag, mouse_drag_win, mouse_drag_ox, mouse_drag_oy;
 extern int need_render;
+extern int close_on_esc;
+extern int starfield_active;
 extern void (*gui_tick)(void);
 
 #endif

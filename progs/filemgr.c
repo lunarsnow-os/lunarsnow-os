@@ -9,7 +9,7 @@ static int fm_n, fm_sel;
 static int fm_has(const char *name)
 {
     for (int i = 0; i < fm_n; i++)
-        if (s_cmp(fm_names[i], name) == 0) return 1;
+        if (s_cmpi(fm_names[i], name) == 0) return 1;
     return 0;
 }
 
@@ -22,9 +22,28 @@ static void fm_collect(const char *name, uint32_t size)
     }
 }
 
+static int has_ext(const char *name, const char *ext)
+{
+    int nl = 0, el = 0;
+    while (name[nl]) nl++;
+    while (ext[el]) el++;
+    if (nl < el) return 0;
+    for (int i = 0; i < el; i++) {
+        char nc = name[nl - el + i];
+        char ec = ext[i];
+        if (nc >= 'a' && nc <= 'z') nc -= 32;
+        if (ec >= 'a' && ec <= 'z') ec -= 32;
+        if (nc != ec) return 0;
+    }
+    return 1;
+}
+
 static void fm_open_sel(void)
 {
-    if (fm_n > 0 && fm_sel >= 0 && fm_sel < fm_n)
+    if (fm_n <= 0 || fm_sel < 0 || fm_sel >= fm_n) return;
+    if (has_ext(fm_names[fm_sel], ".bmp"))
+        prog_bmpview(fm_names[fm_sel]);
+    else
         prog_viewfile(fm_names[fm_sel]);
 }
 

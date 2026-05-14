@@ -80,7 +80,7 @@ lunarsnow.iso: lunarsnow.elf initrd.tar
 	mkdir -p iso/boot/grub
 	cp lunarsnow.elf iso/boot/
 	cp initrd.tar iso/boot/
-	printf 'set timeout=0\nset default=0\ninsmod all_video\nset gfxmode=800x600\nmenuentry "LunarSnow OS" {\n  set gfxpayload=800x600x32\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}' > iso/boot/grub/grub.cfg
+	printf 'set timeout=0\nset default=0\ninsmod all_video\nset gfxmode=800x600x32\nmenuentry "LunarSnow OS" {\n  set gfxpayload=800x600x32\n  multiboot2 /boot/lunarsnow.elf\n  module2 /boot/initrd.tar\n  boot\n}' > iso/boot/grub/grub.cfg
 	$(GRUB_MKRESCUE) -o lunarsnow.iso iso/
 
 run-iso: lunarsnow.iso fat_disk.raw

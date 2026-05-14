@@ -17,7 +17,9 @@ static int read_any(const char *name, uint8_t *buf, uint32_t *size_out)
         *size_out = sz;
         return 0;
     }
-    return fat_read_file(name, buf, size_out);
+    if (fat_read_file(name, buf, size_out) >= 0)
+        return 0;
+    return -1;
 }
 
 static int max_line_len(const uint8_t *data, uint32_t size)
