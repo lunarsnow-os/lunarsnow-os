@@ -13,7 +13,8 @@ extern void prog_clock(void);
 extern void prog_pong(void);
 extern void prog_starfield(void);
 extern void prog_bmpviewer(void);
-
+extern void prog_tetris(void);
+extern void prog_taskmgr(void);
 Prog progs[] = {
     {"Input Name", prog_inputname},
     {"Notepad", prog_notepad},
@@ -23,6 +24,8 @@ Prog progs[] = {
     {"Pong", prog_pong},
     {"Starfield", prog_starfield},
     {"BMP Viewer", prog_bmpviewer},
+    {"Tetris", prog_tetris},
+    {"Task Manager", prog_taskmgr},
     {"About", prog_about},
     {"Control Panel", prog_controlpanel},
     {"File Manager", prog_filemgr},

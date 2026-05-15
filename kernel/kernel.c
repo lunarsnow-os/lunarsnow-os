@@ -2,29 +2,8 @@
 #include "lunarsnow.h"
 #include "progs.h"
 #include "config.h"
-#include "fat.h"
-
-/* ================================================================
-   PORT I/O
-   ================================================================ */
-
-static inline void outb(uint16_t p, uint8_t v)
-{ asm volatile("outb %0, %1" : : "a"(v), "Nd"(p)); }
-
-static inline uint8_t inb(uint16_t p)
-{ uint8_t v; asm volatile("inb %1, %0" : "=a"(v) : "Nd"(p)); return v; }
-
-static inline void outw(uint16_t p, uint16_t v)
-{ asm volatile("outw %0, %1" : : "a"(v), "Nd"(p)); }
-
-static inline uint16_t inw(uint16_t p)
-{ uint16_t v; asm volatile("inw %1, %0" : "=a"(v) : "Nd"(p)); return v; }
-
-static inline void outl(uint16_t p, uint32_t v)
-{ asm volatile("outl %0, %1" : : "a"(v), "Nd"(p)); }
-
-static inline uint32_t inl(uint16_t p)
-{ uint32_t v; asm volatile("inl %1, %0" : "=a"(v) : "Nd"(p)); return v; }
+#include "fs.h"
+#include "io.h"
 
 /* ================================================================
    CMOS / RTC
@@ -65,7 +44,7 @@ void rtc_read_date(int *d, int *m, int *y)
     uint8_t day, mon, yr, cen;
     int timeout = 0;
     while (cmos_r(0x0A) & 0x80) {
-        if (++timeout > 10000) { *d = 1; *m = 1; *y = 2025; return; }
+        if (++timeout > 10000) { *d = 1; *m = 1; *y = 2026; return; }
     }
     day = cmos_r(0x07);
     mon = cmos_r(0x08);
@@ -183,6 +162,7 @@ char cpu_vendor[16];
 char cpu_brand[64];
 int boot_sec_total;
 int cpu_ok;
+int snowfs_mounted;
 static uint32_t mb_magic;
 static void *mb_info;
 
@@ -731,19 +711,52 @@ void kmain(uint32_t magic, void *mbinfo)
     detect_cpu();
     parse_memory(magic, mbinfo);
     parse_initrd(magic, mbinfo);
+    disk_detect_all();
     fat_mount();
+    {
+        Partition parts[4];
+        int np = part_scan(0, parts, 4);
+        snowfs_mounted = 0;
+        for (int i = 0; i < np; i++) {
+            if (parts[i].type == PART_MBR_SNOWFS) {
+                if (snowfs_mount(0, (uint32_t)parts[i].start, (uint32_t)parts[i].size) == 0)
+                    snowfs_mounted = 1;
+                break;
+            }
+        }
+    }
     {
         int h, m, s;
         rtc_read(&h, &m, &s);
         boot_sec_total = h * 3600 + m * 60 + s;
     }
 
-    /* Build dynamic menu */
+    /* Build dynamic menu — categorized */
+    gui_menu_header("Apps");
     gui_menu_add("Terminal",   cb_term);
     gui_menu_add("Calculator", cb_calc);
-    for (int i = 0; i < progs_n; i++) gui_menu_add(progs[i].name, progs[i].init);
-    gui_menu_add("Reboot",     cb_reboot);
-    gui_menu_add("Shutdown",   cb_shutdown);
+    gui_menu_add("Notepad",    prog_notepad);
+    gui_menu_add("Input Name", prog_inputname);
+    gui_menu_add("Clock",      prog_clock);
+    gui_menu_add("File Manager", prog_filemgr);
+    gui_menu_add("Paint",      prog_paint);
+    gui_menu_add("BMP Viewer", prog_bmpviewer);
+
+    gui_menu_header("Games");
+    gui_menu_add("Snake",       prog_snake);
+    gui_menu_add("Minesweeper", prog_minesweeper);
+    gui_menu_add("Pong",        prog_pong);
+    gui_menu_add("Starfield",   prog_starfield);
+    gui_menu_add("Tetris",      prog_tetris);
+
+    gui_menu_header("System");
+    gui_menu_add("Task Manager",  prog_taskmgr);
+    gui_menu_add("Control Panel", prog_controlpanel);
+    gui_menu_add("About",         prog_about);
+
+    gui_menu_header("Power");
+    gui_menu_add("Reboot",   cb_reboot);
+    gui_menu_add("Shutdown", cb_shutdown);
 
     run = 1;
 
@@ -790,7 +803,7 @@ void kmain(uint32_t magic, void *mbinfo)
             /* Keyboard navigation */
             if (key == '\t') {
                 if (menu_open) {
-                    menu_focus = (menu_focus + 1) % gui_menu_count();
+                    menu_focus = gui_menu_next(menu_focus);
                 } else if (focus_mode == 0) {
                     if (nw > 0 && wins[act].nb > 0)
                         wins[act].fc = (wins[act].fc + 1) % wins[act].nb;
@@ -806,7 +819,7 @@ void kmain(uint32_t magic, void *mbinfo)
                     gui_menu_exec(menu_focus);
                     menu_open = 0; focus_mode = 0;
                 } else if (focus_mode == 1) {
-                    menu_open = 1; menu_focus = 0; focus_mode = 2;
+                    menu_open = 1; menu_focus = gui_menu_next(-1); focus_mode = 2;
                 } else if (focus_mode == 0 && nw > 0 && wins[act].nb > 0) {
                     Btn *b = &wins[act].btns[wins[act].fc];
                     if (b->cb) b->cb();
@@ -824,12 +837,12 @@ void kmain(uint32_t magic, void *mbinfo)
                 else if (nw > 1) gui_wclose(act);
             }
             if (key == KEY_UP && menu_open)
-                menu_focus = (menu_focus - 1 + gui_menu_count()) % gui_menu_count();
+                menu_focus = gui_menu_prev(menu_focus);
             if (key == KEY_DOWN && menu_open)
-                menu_focus = (menu_focus + 1) % gui_menu_count();
+                menu_focus = gui_menu_next(menu_focus);
             if (key == KEY_SUPER) {
                 if (menu_open) { menu_open = 0; focus_mode = 0; }
-                else { menu_open = 1; menu_focus = 0; focus_mode = 2; }
+                else { menu_open = 1; menu_focus = gui_menu_next(-1); focus_mode = 2; }
             }
         }
 
@@ -846,10 +859,12 @@ void kmain(uint32_t magic, void *mbinfo)
         if (starfield_active) {
             /* starfield handles its own rendering in gui_tick */
         } else if (need_render) {
+            gui_hover_check();
             gui_render();
             need_render = 0;
         } else if (mouse_moved) {
             gui_update_cursor();
+            gui_hover_check();
         }
 
         if (gui_tick) gui_tick();

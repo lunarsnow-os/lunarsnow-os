@@ -1,4 +1,4 @@
-#include "../lunarsnow.h"
+#include "lunarsnow.h"
 
 #define S 9
 #define C 40

@@ -15,4 +15,14 @@ int vbe_available(void);
 int vbe_set_mode(int w, int h, int bpp);
 int vbe_try_set_mode(int w, int h, int bpp);
 
+/* Kernel globals */
+extern uint64_t total_ram;
+extern char cpu_vendor[16];
+extern char cpu_brand[64];
+extern int boot_sec_total;
+extern int snowfs_mounted;
+extern int cpu_ok;
+extern uint8_t *initrd_start;
+extern uint32_t initrd_size;
+
 #endif

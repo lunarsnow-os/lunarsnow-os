@@ -1,8 +1,5 @@
 #include <stdint.h>
-#include "font8x16.h"
-#include "fb.h"
-#include "input.h"
-#include "gui.h"
+#include "lunarsnow.h"
 #include "config.h"
 
 /* forward declarations for callbacks used in term_exec */
@@ -68,7 +65,6 @@ static void term_exec(void)
     else if (match(cmd, "cls"))     term_cnt = 0;
     else if (match(cmd, "time")) {
         int h, m, s;
-        extern void rtc_read(int *h, int *m, int *s);
         rtc_read(&h, &m, &s);
         char buf[16]; int bi = 0;
         buf[bi++] = '0' + h / 10; buf[bi++] = '0' + h % 10;

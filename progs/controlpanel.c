@@ -1,7 +1,7 @@
-#include "../lunarsnow.h"
-#include "../config.h"
+#include "lunarsnow.h"
+#include "config.h"
 
-static void drawMain(int wi) {
+static void draw_main(int wi) {
     Win *w = &wins[wi];
     int wx = w->x + 12, wy = w->y + 28;
 
@@ -113,7 +113,7 @@ static void ds1366(void) { start_res_change(1366, 768); }
 static void ds1600(void) { start_res_change(1600, 900); }
 static void ds1080(void) { start_res_change(1920, 1080); }
 
-static void drawDisplay(int wi) {
+static void draw_display(int wi) {
     Win *w = &wins[wi];
     int wx = w->x + 12, wy = w->y + 28;
     char buf[64]; int p;
@@ -152,7 +152,7 @@ void display_settings(void) {
     gui_wbtn(wi, "1600x900",  198, 118, 86, 28, ds1600);
     gui_wbtn(wi, "1920x1080", 302, 118, 86, 28, ds1080);
     gui_wbtn(wi, "Close", 320, 320, 80, 30, app_close);
-    wins[wi].draw = drawDisplay;
+    wins[wi].draw = draw_display;
 }
 
 static void mouse_settings(void) {
@@ -163,5 +163,5 @@ void prog_controlpanel(void) {
     int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 260);
     gui_wbtn(wi, "Mouse", 14, 72, 130, 26, mouse_settings);
     gui_wbtn(wi, "Display", 148, 72, 130, 26, display_settings);
-    wins[wi].draw = drawMain;
+    wins[wi].draw = draw_main;
 }

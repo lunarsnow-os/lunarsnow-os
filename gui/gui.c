@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "lunarsnow.h"
 #include "font8x16.h"
 #include "fb.h"
 #include "input.h"
@@ -16,18 +17,35 @@ int close_on_esc;
 int starfield_active;
 
 /* Dynamic menu */
-#define MENU_MAX 16
-static struct { const char *name; void (*cb)(void); } menu[MENU_MAX];
+#define MENU_MAX 24
+static struct { const char *name; void (*cb)(void); int is_header; } menu[MENU_MAX];
 static int menu_n;
 
 void gui_menu_add(const char *name, void (*cb)(void)) {
-    if (menu_n < MENU_MAX) { menu[menu_n].name = name; menu[menu_n].cb = cb; menu_n++; }
+    if (menu_n < MENU_MAX) { menu[menu_n].name = name; menu[menu_n].cb = cb; menu[menu_n].is_header = 0; menu_n++; }
+}
+
+void gui_menu_header(const char *name) {
+    if (menu_n < MENU_MAX) { menu[menu_n].name = name; menu[menu_n].cb = 0; menu[menu_n].is_header = 1; menu_n++; }
 }
 
 int gui_menu_count(void) { return menu_n; }
-void gui_menu_exec(int i) { if (i >= 0 && i < menu_n && menu[i].cb) menu[i].cb(); }
 
-extern void rtc_read(int *h, int *m, int *s);
+int gui_menu_prev(int i) {
+    int n = gui_menu_count();
+    if (n <= 0) return 0;
+    do { i = (i - 1 + n) % n; } while (menu[i].is_header);
+    return i;
+}
+
+int gui_menu_next(int i) {
+    int n = gui_menu_count();
+    if (n <= 0) return 0;
+    do { i = (i + 1) % n; } while (menu[i].is_header);
+    return i;
+}
+
+void gui_menu_exec(int i) { if (i >= 0 && i < menu_n && !menu[i].is_header && menu[i].cb) menu[i].cb(); }
 
 /* ================================================================
    WINDOW MANAGEMENT
@@ -138,6 +156,50 @@ int need_render = 1;
 void (*gui_tick)(void);
 void gui_set_dirty(void) { need_render = 1; }
 
+int hovered_app = -1;
+int hovered_start = 0;
+int hovered_menu = -1;
+
+void gui_hover_check(void) {
+    int mx = mouse_x, my = mouse_y;
+    int new_hover = -1;
+    int new_start = 0;
+    int new_menuh = -1;
+
+    if (menu_open) {
+        int my2 = fb_h - TB_H - menu_n * MI_H - 8;
+        if (mx >= 2 && mx < 2 + MN_W && my >= my2 && my < my2 + menu_n * MI_H + 4) {
+            new_menuh = (my - my2 - 2) / MI_H;
+            if (new_menuh < 0 || new_menuh >= menu_n) new_menuh = -1;
+            if (new_menuh >= 0 && !menu[new_menuh].is_header) {
+                menu_focus = new_menuh;
+                focus_mode = 2;
+            }
+        }
+    }
+
+    if (my >= fb_h - TB_H && my < fb_h) {
+        if (mx < ST_W + 2) {
+            new_start = 1;
+        } else {
+            int bx = ST_W + 6;
+            for (int i = 0; i < nw; i++) {
+                int bw = s_len(wins[i].title) * 8 + 12;
+                if (bw > 140) bw = 140;
+                if (mx >= bx && mx < bx + bw) { new_hover = i; break; }
+                bx += bw + 2;
+            }
+        }
+    }
+
+    if (new_hover != hovered_app || new_start != hovered_start || new_menuh != hovered_menu) {
+        hovered_app = new_hover;
+        hovered_start = new_start;
+        hovered_menu = new_menuh;
+        need_render = 1;
+    }
+}
+
 static void curs_restore(void) {
     int x = curs_sx, y = curs_sy;
     if (x < 0) return;
@@ -196,19 +258,15 @@ void gui_mouse_click(void) {
     int x = mouse_x, y = mouse_y;
 
     if (menu_open) {
-        int mx = 2;
-        int my = fb_h - TB_H - menu_n * MI_H - 4;
-        if (x >= mx && x < mx + MN_W && y >= my && y < my + menu_n * MI_H + 4) {
-            int item = (y - my - 2) / MI_H;
-            if (item >= 0 && item < menu_n && menu[item].cb) menu[item].cb();
-        }
+        if (hovered_menu >= 0 && !menu[hovered_menu].is_header && menu[hovered_menu].cb)
+            menu[hovered_menu].cb();
         menu_open = 0; focus_mode = 0;
         return;
     }
 
     if (y >= fb_h - TB_H) {
         if (x < ST_W + 2) {
-            menu_open = 1; menu_focus = 0; focus_mode = 2;
+            menu_open = 1; menu_focus = gui_menu_next(-1); focus_mode = 2;
             return;
         }
         int bx = ST_W + 6;
@@ -268,14 +326,14 @@ void gui_render(void) {
     fb_border(0, fb_h - TB_H, fb_w, TB_H, C_BDR);
 
     /* Start button */
-    uint32_t scol = (focus_mode == 1) ? C_STARTF : C_START;
+    uint32_t scol = (focus_mode == 1 || hovered_start) ? C_STARTF : C_START;
     fb_rect(2, fb_h - TB_H + 2, ST_W, TB_H - 4, scol);
     fb_rect(6, fb_h - TB_H + 7, 6, 14, 0x5A8ACC);
     fb_txt(16, fb_h - TB_H + 6, "Start", C_TTT, scol);
 
     int bx = ST_W + 6, max_bx = fb_w - 76;
     for (int i = 0; i < nw; i++) {
-        uint32_t c = (i == act) ? C_TBTNA : C_TBTN;
+        uint32_t c = (i == act) ? C_TBTNA : (i == hovered_app) ? 0x4A5AB0 : C_TBTN;
         int bw = s_len(wins[i].title) * 8 + 12;
         if (bw > 140) bw = 140;
         if (bx + bw >= max_bx) bw = max_bx - bx - 2;
@@ -283,6 +341,8 @@ void gui_render(void) {
         fb_rect(bx, fb_h - TB_H + 2, bw, TB_H - 4, c);
         if (i == act)
             fb_rect(bx, fb_h - TB_H + 2, bw, 2, 0x6A90D0);
+        if (i == hovered_app && i != act)
+            fb_rect(bx, fb_h - TB_H + 2, bw, 2, 0x3C5AA0);
         int maxc = (bw - 8) / 8;
         if (maxc < 1) maxc = 1;
         char trim[24];
@@ -308,18 +368,30 @@ void gui_render(void) {
     fb_rect(cx, fb_h - TB_H, 8 * 9, TB_H, C_TBAR);
     fb_txt(cx, fb_h - TB_H + 6, tstr, C_TTT, C_TBAR);
 
-    /* Start menu */
+    /* Start menu — modern style */
     if (menu_open) {
         int mx = 2;
-        int my = fb_h - TB_H - menu_n * MI_H - 4;
+        int my = fb_h - TB_H - menu_n * MI_H - 8;
+
+        /* Shadow (doesn't overlap taskbar) */
+        fb_rect(mx + 4, my + 4, MN_W, menu_n * MI_H, 0x05050A);
+
+        /* Background */
         fb_rect(mx, my, MN_W, menu_n * MI_H + 4, C_MBG);
-        fb_border(mx, my, MN_W, menu_n * MI_H + 4, C_BDR);
+
         for (int i = 0; i < menu_n; i++) {
             int iy = my + 2 + i * MI_H;
-            uint32_t mc = (i == menu_focus && focus_mode == 2) ? C_MFOC : C_MBG;
-            fb_rect(mx + 2, iy, MN_W - 4, MI_H, mc);
-            fb_rect(mx + 2, iy, 4, MI_H, C_TAC);
-            fb_txt(mx + 10, iy + 2, menu[i].name, C_TTT, mc);
+            int is_hov = (i == hovered_menu) || (i == menu_focus && focus_mode == 2);
+
+            if (menu[i].is_header) {
+                fb_txt(mx + 8, iy + 2, menu[i].name, 0x5A7AD0, C_MBG);
+                fb_rect(mx + 8, iy + MI_H - 2, MN_W - 16, 1, 0x2A2A48);
+            } else if (is_hov) {
+                fb_rect(mx + 4, iy, MN_W - 8, MI_H, C_MFOC);
+                fb_txt(mx + 8, iy + 2, menu[i].name, C_TTT, C_MFOC);
+            } else {
+                fb_txt(mx + 8, iy + 2, menu[i].name, C_TTT, C_MBG);
+            }
         }
     }
 

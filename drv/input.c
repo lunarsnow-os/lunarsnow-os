@@ -1,12 +1,7 @@
 #include <stdint.h>
+#include "io.h"
 #include "fb.h"
 #include "input.h"
-
-static inline void outb(uint16_t p, uint8_t v)
-{ asm volatile("outb %0, %1" : : "a"(v), "Nd"(p)); }
-
-static inline uint8_t inb(uint16_t p)
-{ uint8_t v; asm volatile("inb %1, %0" : "=a"(v) : "Nd"(p)); return v; }
 
 int mouse_x, mouse_y, mouse_btn;
 
@@ -76,6 +71,12 @@ void kb_poll(void)
                 if (data == 0x50) kb_push(KEY_DOWN);
                 if (data == 0x4B) kb_push(KEY_LEFT);
                 if (data == 0x4D) kb_push(KEY_RIGHT);
+                if (data == 0x47) kb_push(KEY_HOME);
+                if (data == 0x4F) kb_push(KEY_END);
+                if (data == 0x49) kb_push(KEY_PGUP);
+                if (data == 0x51) kb_push(KEY_PGDN);
+                if (data == 0x53) kb_push(KEY_DEL);
+                if (data == 0x52) kb_push(KEY_INS);
                 if (data == 0x5B) kb_push(KEY_SUPER);
                 ext_key = 0;
             } else if (data == 0x3E) {

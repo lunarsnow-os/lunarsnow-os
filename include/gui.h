@@ -30,7 +30,10 @@ void gui_wfront(int idx);
 void gui_render(void);
 void gui_mouse_click(void);
 void gui_menu_add(const char *name, void (*cb)(void));
+void gui_menu_header(const char *name);
 int  gui_menu_count(void);
+int  gui_menu_prev(int i);
+int  gui_menu_next(int i);
 void gui_menu_exec(int i);
 void gui_set_dirty(void);
 void gui_update_cursor(void);
@@ -72,5 +75,9 @@ extern int need_render;
 extern int close_on_esc;
 extern int starfield_active;
 extern void (*gui_tick)(void);
+extern int hovered_app;
+extern int hovered_start;
+extern int hovered_menu;
+void gui_hover_check(void);
 
 #endif

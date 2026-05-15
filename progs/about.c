@@ -1,15 +1,5 @@
-#include "../lunarsnow.h"
-#include "../config.h"
-
-static int about_win = -1;
-
-extern uint64_t total_ram;
-extern char cpu_vendor[];
-extern char cpu_brand[];
-extern int boot_sec_total;
-extern int cpu_ok;
-extern uint8_t *initrd_start;
-extern uint32_t initrd_size;
+#include "lunarsnow.h"
+#include "config.h"
 
 static void draw_logo(int x, int y, uint32_t bg, uint32_t fg)
 {
@@ -133,6 +123,6 @@ static void draw(int wi)
 
 void prog_about(void)
 {
-    about_win = gui_wnew("About", (fb_w - 500) / 2, (fb_h - 250) / 2, 500, 250);
-    wins[about_win].draw = draw;
+    int wi = gui_wnew("About", (fb_w - 500) / 2, (fb_h - 250) / 2, 500, 250);
+    wins[wi].draw = draw;
 }

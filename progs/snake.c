@@ -1,4 +1,4 @@
-#include "../lunarsnow.h"
+#include "lunarsnow.h"
 
 #define COLS 40
 #define ROWS 30

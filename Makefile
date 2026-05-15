@@ -1,11 +1,18 @@
 CC = gcc
 AS = as
 LD = ld
-CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -Wextra -Os
+CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -Wextra -Os -I include
 ASFLAGS = --64
 LDFLAGS = -m elf_x86_64 -T linker.ld
 
-OBJS = boot.o kernel.o fb.o input.o gui.o apps.o progs.o disk.o fat.o vbe_real.o vbe_tramp.o $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
+OBJS = \
+  boot/boot.o \
+  kernel/kernel.o \
+  drv/fb.o drv/input.o \
+  gui/gui.o gui/apps.o gui/progs.o \
+  fs/fs.o \
+  vbe/vbe_real.o vbe/vbe_tramp.o \
+  $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
 
 all: lunarsnow.elf
 
@@ -23,10 +30,13 @@ lunarsnow.elf: $(OBJS) linker.ld
 
 clean:
 	rm -f *.o lunarsnow.elf lunarsnow.iso initrd.tar fat_disk.raw
-	rm -f progs/*.o
+	rm -f boot/*.o kernel/*.o drv/*.o gui/*.o fs/*.o vbe/*.o progs/*.o tools/mksnowfs
 	rm -rf iso/
 
-fat_disk.raw: $(wildcard initrd/*) create_fat_disk.sh
+tools/mksnowfs: tools/mksnowfs.c
+	gcc -o $@ $< -Wall
+
+fat_disk.raw: $(wildcard initrd/*) create_fat_disk.sh tools/mksnowfs
 	bash create_fat_disk.sh
 
 # QEMU base config (override QEMU_OPTS= for extra flags)
@@ -40,6 +50,9 @@ run-vnc: lunarsnow.iso fat_disk.raw
 
 run-sdl: lunarsnow.iso fat_disk.raw
 	qemu-system-x86_64 $(QEMU_BASE) -display sdl $(QEMU_OPTS)
+
+run-audio: lunarsnow.iso fat_disk.raw
+	qemu-system-x86_64 $(QEMU_BASE) -audiodev pa,id=spk -machine pcspk-audiodev=spk $(QEMU_OPTS)
 
 run-gtk: lunarsnow.iso fat_disk.raw
 	qemu-system-x86_64 $(QEMU_BASE) -display gtk $(QEMU_OPTS)

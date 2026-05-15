@@ -1,7 +1,6 @@
-#include "../lunarsnow.h"
-#include "../config.h"
+#include "lunarsnow.h"
+#include "config.h"
 
-static int clock_win = -1;
 static int last_sec = -1;
 
 static int dow(int y, int m, int d)
@@ -132,8 +131,8 @@ static void draw(int wi)
 
 void prog_clock(void)
 {
-    clock_win = gui_wnew("Clock & Calendar", (fb_w - 260) / 2, (fb_h - 300) / 2, 260, 300);
-    wins[clock_win].draw = draw;
-    wins[clock_win].on_close = on_close;
+    int wi = gui_wnew("Clock & Calendar", (fb_w - 260) / 2, (fb_h - 300) / 2, 260, 300);
+    wins[wi].draw = draw;
+    wins[wi].on_close = on_close;
     gui_tick = tick_fn;
 }

@@ -1,5 +1,5 @@
-#include "../lunarsnow.h"
-#include "../fat.h"
+#include "lunarsnow.h"
+#include "fs.h"
 
 /* Viewer always copies file data into a per-window buffer */
 typedef struct { char name[64]; uint8_t data[16384]; uint32_t size; } VF;
@@ -17,6 +17,8 @@ static int read_any(const char *name, uint8_t *buf, uint32_t *size_out)
         *size_out = sz;
         return 0;
     }
+    if (snowfs_mounted && snowfs_read(name, buf, size_out) >= 0)
+        return 0;
     if (fat_read_file(name, buf, size_out) >= 0)
         return 0;
     return -1;

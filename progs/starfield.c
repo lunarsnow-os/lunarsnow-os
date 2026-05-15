@@ -1,5 +1,5 @@
-#include "../lunarsnow.h"
-#include "../config.h"
+#include "lunarsnow.h"
+#include "config.h"
 
 #define NUM_STARS 400
 

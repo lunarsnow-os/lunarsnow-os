@@ -1,6 +1,6 @@
-#include "../lunarsnow.h"
-#include "../apps.h"
-#include "../fat.h"
+#include "lunarsnow.h"
+#include "apps.h"
+#include "fs.h"
 
 typedef struct {
     uint8_t data[131072];
@@ -18,6 +18,10 @@ static int bmp_read(const char *name)
     if (p) {
         if (bmp_ctx.size > 131072) bmp_ctx.size = 131072;
         mcpy(bmp_ctx.data, p, bmp_ctx.size);
+        return 0;
+    }
+    if (snowfs_mounted && snowfs_read(name, bmp_ctx.data, &bmp_ctx.size) >= 0) {
+        if (bmp_ctx.size > 131072) bmp_ctx.size = 131072;
         return 0;
     }
     if (fat_read_file(name, bmp_ctx.data, &bmp_ctx.size) >= 0) {

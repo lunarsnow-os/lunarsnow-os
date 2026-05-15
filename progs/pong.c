@@ -1,5 +1,5 @@
-#include "../lunarsnow.h"
-#include "../config.h"
+#include "lunarsnow.h"
+#include "config.h"
 
 static int pong_win = -1;
 static int ball_x, ball_y, ball_dx, ball_dy;

@@ -1,9 +1,10 @@
-#include "../lunarsnow.h"
-#include "../fat.h"
+#include "lunarsnow.h"
+#include "fs.h"
 
-#define FM_MAX 32
+#define FM_MAX 48
 static char fm_names[FM_MAX][64];
 static uint32_t fm_sizes[FM_MAX];
+static int fm_src[FM_MAX]; /* 0=initrd 1=fat 2=snowfs */
 static int fm_n, fm_sel;
 
 static int fm_has(const char *name)
@@ -13,11 +14,32 @@ static int fm_has(const char *name)
     return 0;
 }
 
-static void fm_collect(const char *name, uint32_t size)
+static void fm_collect_initrd(const char *name, uint32_t size)
 {
     if (fm_n < FM_MAX && !fm_has(name)) {
         s_cpy(fm_names[fm_n], name, 64);
         fm_sizes[fm_n] = size;
+        fm_src[fm_n] = 0;
+        fm_n++;
+    }
+}
+
+static void fm_collect_fat(const char *name, uint32_t size)
+{
+    if (fm_n < FM_MAX && !fm_has(name)) {
+        s_cpy(fm_names[fm_n], name, 64);
+        fm_sizes[fm_n] = size;
+        fm_src[fm_n] = 1;
+        fm_n++;
+    }
+}
+
+static void fm_collect_snow(const char *name, uint32_t size)
+{
+    if (fm_n < FM_MAX && !fm_has(name)) {
+        s_cpy(fm_names[fm_n], name, 64);
+        fm_sizes[fm_n] = size;
+        fm_src[fm_n] = 2;
         fm_n++;
     }
 }
@@ -44,7 +66,55 @@ static void fm_open_sel(void)
     if (has_ext(fm_names[fm_sel], ".bmp"))
         prog_bmpview(fm_names[fm_sel]);
     else
-        prog_viewfile(fm_names[fm_sel]);
+        prog_notepad_open(fm_names[fm_sel]);
+}
+
+static void fm_collect_all(void)
+{
+    fm_n = 0;
+    file_iterate(fm_collect_initrd);
+    if (snowfs_mounted) snowfs_iterate(fm_collect_snow);
+    fat_iterate(fm_collect_fat);
+}
+
+static void cb_new_file(void)
+{
+    char name[16];
+    int num = 0;
+    do {
+        int i = 0;
+        const char *base = "NEWFILE";
+        while (*base && i < 7) name[i++] = *base++;
+        if (num > 0) { name[i++] = '0' + num; }
+        name[i++] = '.'; name[i++] = 'T'; name[i++] = 'X'; name[i++] = 'T';
+        name[i] = 0;
+        num++;
+    } while (fm_has(name) && num < 100);
+
+    int ok = 0;
+    if (snowfs_mounted)
+        ok = (snowfs_write(name, (const uint8_t *)"", 0) == 0);
+    else
+        ok = (fat_write_file(name, (const uint8_t *)"", 0) == 0);
+    if (ok) { fm_collect_all(); gui_set_dirty(); }
+}
+
+static void cb_delete(void)
+{
+    if (fm_n <= 0 || fm_sel < 0 || fm_sel >= fm_n) return;
+    if (fm_src[fm_sel] == 0) { msgbox("Error", "Cannot delete initrd files"); return; }
+
+    int ok = 0;
+    if (fm_src[fm_sel] == 2)
+        ok = (snowfs_delete(fm_names[fm_sel]) == 0);
+    else
+        ok = (fat_delete_file(fm_names[fm_sel]) == 0);
+    if (ok) {
+        fm_collect_all();
+        if (fm_sel >= fm_n) fm_sel = fm_n - 1;
+        if (fm_sel < 0) fm_sel = 0;
+        gui_set_dirty();
+    }
 }
 
 static void fm_click(int wi)
@@ -70,6 +140,10 @@ static void fm_on_key(int k)
         if (fm_sel < fm_n - 1) { fm_sel++; gui_set_dirty(); }
     } else if (k == '\n') {
         fm_open_sel();
+    } else if (k == 'd' || k == 'D' || k == 127) {
+        cb_delete();
+    } else if (k == 'n' || k == 'N') {
+        cb_new_file();
     }
 }
 
@@ -93,11 +167,9 @@ static void draw(int wi)
         const char *fn = fm_names[i];
         while (*fn && pi < 40) buf[pi++] = *fn++;
         buf[pi++] = ' ';
-        buf[pi++] = '(';
         str_int(buf + pi, (int)fm_sizes[i]);
         while (buf[pi]) pi++;
-        buf[pi++] = ' '; buf[pi++] = 'b'; buf[pi++] = ')';
-        buf[pi] = 0;
+        buf[pi++] = ' '; buf[pi++] = 'b'; buf[pi] = 0;
 
         fb_txt(wx + 4, wy, buf, C_LBL, (i == fm_sel) ? C_MFOC : w->bg);
         wy += 16;
@@ -107,12 +179,12 @@ static void draw(int wi)
 
 void prog_filemgr(void)
 {
-    fm_n = 0;
     fm_sel = 0;
-    file_iterate(fm_collect);
-    fat_iterate(fm_collect);
+    fm_collect_all();
 
-    int wi = gui_wnew("File Manager", 50, 40, 340, 340);
+    int wi = gui_wnew("File Manager", 50, 40, 340, 380);
+    gui_wbtn(wi, "New", 12, 316, 50, 24, cb_new_file);
+    gui_wbtn(wi, "Del", 66, 316, 50, 24, cb_delete);
     wins[wi].draw = draw;
     wins[wi].on_key = fm_on_key;
     wins[wi].on_click = fm_click;

@@ -1,5 +1,5 @@
 /* Input Name — digita o nome e mostra "Hello, [nome]!" */
-#include "../lunarsnow.h"
+#include "lunarsnow.h"
 
 static char name[32];
 static int name_len;
