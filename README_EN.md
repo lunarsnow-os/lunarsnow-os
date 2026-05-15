@@ -2,7 +2,7 @@
 
 A bare-metal 64-bit graphical OS that boots directly in QEMU (no host OS).
 
-Architecture: **x86_64**, long mode, 1 GB pages.
+Architecture: **x86_64**, long mode, 2 MB pages.
 
 ## Building
 
@@ -18,18 +18,17 @@ Architecture: **x86_64**, long mode, 1 GB pages.
 ### Build & Run
 
 ```sh
-make              # builds lunarsnow.elf + initrd.tar
-make run          # BIOS + QEMU with ISO + FAT32 disk
-make run-uefi     # UEFI + QEMU (OVMF)
-make run-uefi-gtk # UEFI + QEMU with GTK display
-make iso          # generates bootable ISO (lunarsnow.iso)
-make clean        # cleans objects
+make run-sdl          # QEMU + SDL2 display (recommended)
+make run              # QEMU + default display
+make run-uefi         # UEFI + QEMU (OVMF)
+make iso              # generates bootable ISO (lunarsnow.iso)
+make clean            # cleans objects
 ```
 
 ### UEFI
 
 ```sh
-make run-uefi-gtk
+make run-uefi-sdl
 ```
 
 Requires `edk2-ovmf` package.
@@ -45,57 +44,86 @@ Boots via BIOS or UEFI. Requires VESA (or UEFI GOP) graphics.
 ## Structure
 
 ```
-boot.s              → Multiboot2 header + entry point (x86_64 assembly)
+boot/               → Multiboot2 header + entry point (x86_64 assembly)
+kernel/kernel.c     → Init: PCI, framebuffer, RTC, ACPI, boot screen, event loop
+drv/                → Drivers
+├── fb.c            → Framebuffer: pixel, rect, text, flip (double buffer)
+├── input.c         → PS/2 keyboard + mouse
+gui/                → GUI
+├── gui.c           → Window manager, buttons, taskbar, clock, menu, cursor
+├── apps.c          → Terminal, calculator, msgbox, callbacks
+├── progs.c         → Program registry
+fs/fs.c             → Unified filesystem (ATA PIO, partitions, FAT32, SnowFS)
+vbe/                → VESA BIOS Extensions (video modes)
+include/            → Central headers
+├── lunarsnow.h     → SDK umbrella (includes everything)
+├── config.h        → Centralized settings (version, name, etc.)
+├── io.h            → Port I/O (inb/outb, inw/outw, inl/outl)
+├── bmp.h           → BMP constants
+├── fb.h, input.h, gui.h, apps.h, progs.h, fs.h
+progs/              → Programs (each in its own .c)
+│ ├── about.c       → About (CPU, RAM, uptime, resolution, initrd, logo)
+│ ├── controlpanel.c→ Control Panel (mouse, display)
+│ ├── filemgr.c     → File Manager (initrd + FAT32 + SnowFS)
+│ ├── viewfile.c    → Text viewer (auto-size width)
+│ ├── notepad.c     → Notepad with arrows, scroll, status bar
+│ ├── paint.c       → Paint (mouse drawing, saves BMP to SnowFS)
+│ ├── clock.c       → Analog Clock + Calendar
+│ ├── bmpview.c     → BMP Viewer (any size, scaling)
+│ ├── taskmgr.c     → Task Manager (RAM, CPU, disk, version)
+│ ├── snake.c       → Snake game
+│ ├── minesweeper.c → Minesweeper
+│ ├── pong.c        → Pong vs CPU
+│ ├── tetris.c      → Classic Tetris
+│ ├── starfield.c   → 3D Starfield screensaver
+│ └── inputname.c   → Input Name demo
+initrd/             → Files baked into initrd.tar
+tools/              → Host tools
+├── mksnowfs.c      → Formats a SnowFS partition
 linker.ld           → Linker script (loads at 1 MB)
-kernel.c            → Init: PCI, framebuffer, RTC, ACPI, boot screen, event loop
-├── fb.c / fb.h         → Framebuffer: pixel, rect, text, flip (double buffer)
-├── input.c / input.h   → PS/2 keyboard + mouse
-├── gui.c / gui.h       → Window manager, buttons, taskbar, clock, menu, cursor
-├── apps.c / apps.h     → Terminal, calculator, msgbox, callbacks
-├── progs.c / progs.h   → Program registry
-├── config.h             → Centralized settings (version, name, etc.)
-├── progs/              → Programs (each in its own .c)
-│   ├── about.c         → About (CPU, RAM, uptime, resolution, initrd, logo)
-│   ├── controlpanel.c  → Control Panel (mouse, display)
-│   ├── filemgr.c       → File Manager (initrd + FAT disk)
-│   ├── viewfile.c      → Text viewer (auto-size width)
-│   ├── inputname.c     → Input Name demo
-│   ├── notepad.c       → Notepad text editor
-│   ├── paint.c         → Paint (mouse drawing, 12-color palette)
-│   ├── snake.c         → Snake game
-│   └── minesweeper.c   → Minesweeper game
-├── disk.c / disk.h     → ATA PIO driver (LBA28)
-├── fat.c / fat.h       → FAT32 driver (mount, read, iterate)
-├── initrd/             → Files baked into initrd.tar
-│   ├── boot.txt, meow.txt, hii.txt, ...
-└── lunarsnow.h         → SDK umbrella (includes everything)
+Makefile
+create_fat_disk.sh  → Creates 128MB disk image (FAT32 + SnowFS)
 ```
 
 ## Programs
 
 | Program | File | Description |
 |---|---|---|
-| Terminal | built-in (`apps.c`) | Commands: `help`, `echo`, `cls`, `time`, `ver`, `shutdown`, `reboot`, `exit` |
-| Calculator | built-in (`apps.c`) | +, -, ×, ÷, keyboard |
-| Notepad | `progs/notepad.c` | Text editor (72 col × 256 lines, dark theme) |
+| Terminal | built-in (`gui/apps.c`) | Commands: `help`, `echo`, `cls`, `time`, `ver`, `shutdown`, `reboot`, `exit` |
+| Calculator | built-in (`gui/apps.c`) | +, -, ×, ÷, keyboard |
+| Notepad | `progs/notepad.c` | Editor (72 col × 256 lines, arrows, Home/End, PgUp/PgDn, Del, scrollbar, status bar) |
+| Paint | `progs/paint.c` | Mouse drawing, 12-color palette, Save/Load BMP via SnowFS |
+| File Manager | `progs/filemgr.c` | Browse initrd + FAT32 + SnowFS, opens .txt in Notepad, New/Del |
 | About | `progs/about.c` | CPU, vendor, RAM, uptime, resolution, initrd, LunarSnow logo |
-| Control Panel | `progs/controlpanel.c` | Mouse & display settings |
-| File Manager | `progs/filemgr.c` | Browse initrd + FAT disk files |
-| File Viewer | `progs/viewfile.c` | Auto-sized text viewer |
-| Input Name | `progs/inputname.c` | Keyboard input demo |
-| Paint | `progs/paint.c` | Mouse drawing, 12-color palette |
-| Snake | `progs/snake.c` | Snake game (arrow keys, score, adjustable speed) |
-| Minesweeper | `progs/minesweeper.c` | Minesweeper (9×9, right-click / F key to flag) |
+| Control Panel | `progs/controlpanel.c` | Mouse & display settings (VBE) |
+| Clock | `progs/clock.c` | Analog clock + calendar |
+| Task Manager | `progs/taskmgr.c` | RAM, CPU vendor, disk, version |
+| BMP Viewer | `progs/bmpview.c` | Opens BMP from initrd/SnowFS/FAT with scaling |
+| Snake | `progs/snake.c` | Snake game (arrows, score, speed +/-) |
+| Minesweeper | `progs/minesweeper.c` | 9×9 Minesweeper (F to flag) |
+| Pong | `progs/pong.c` | Pong vs CPU |
+| Tetris | `progs/tetris.c` | Classic Tetris |
+| Starfield | `progs/starfield.c` | 3D starfield screensaver |
+| Input Name | `progs/inputname.c` | Text input demo |
 
-## FAT32 Disk
+## SnowFS (Custom Filesystem)
 
-`make run` attaches `fat_disk.raw` (64 MB, FAT32) to QEMU via IDE.
-The kernel mounts the first FAT32 partition and makes files available
-through File Manager and File Viewer.
+LunarSnow OS includes **SnowFS**, a custom filesystem (type 0xDA) with:
+- 512B superblock, flat root directory (256 entries, names up to 55 chars)
+- 32-bit FAT for cluster allocation (4 sectors/cluster)
+- Operations: create, read, write, delete, iterate
+
+The `fat_disk.raw` has two partitions:
+- **FAT32** (LBA 2048, 32 MB) — compatibility
+- **SnowFS** (LBA 67584, ~95 MB) — save Paint/Notepad files
+
+File Manager lists all 3 sources (initrd, FAT32, SnowFS).
+
+## Disk
 
 ```sh
-make fat_disk.raw   # creates disk with files from initrd/
-bash create_fat_disk.sh   # or manually
+make fat_disk.raw          # generates 128MB disk with FAT32 + SnowFS
+bash create_fat_disk.sh    # or manually
 ```
 
 ## Shortcuts
@@ -108,9 +136,9 @@ bash create_fat_disk.sh   # or manually
 | Escape | Close menu / sub-window |
 | Enter/Space | Activate button / menu item |
 | Arrows | Menu / file list / game navigation |
-| Right-click | Toggle flag/dig mode in Minesweeper |
-| F | Toggle flag/dig mode in Minesweeper (keyboard) |
-| +/- | Increase/decrease Snake speed |
+| S (Notepad) | Save file |
+| F (Minesweeper) | Toggle flag/dig |
+| +/- | Snake: speed; Tetris: rotation |
 
 ## How to create an app
 
@@ -119,7 +147,7 @@ bash create_fat_disk.sh   # or manually
 Create `progs/my_app.c`:
 
 ```c
-#include "../lunarsnow.h"
+#include "lunarsnow.h"
 
 static void draw(int wi) {
     Win *w = &wins[wi];
@@ -134,24 +162,24 @@ void prog_my_app(void) {
 
 ### 2. Register
 
-In `progs.c`, add:
+In `gui/progs.c`, add:
 
 ```c
 extern void prog_my_app(void);
 Prog progs[] = { ..., {"My App", prog_my_app}, };
 ```
 
-`make` compiles automatically (wildcard in Makefile) and the Start menu picks it up.
+`make` compiles automatically (wildcard in Makefile).
 
 ### 3. Available APIs
 
-#### Window (`gui.h`)
+#### Window
 
 ```c
 int wi = gui_wnew(title, x, y, width, height);
 ```
 
-Returns the window index. Content area starts at `y + 20`.
+Content area starts at `y + 20`.
 
 #### Buttons
 
@@ -159,19 +187,16 @@ Returns the window index. Content area starts at `y + 20`.
 gui_wbtn(wi, "Text", x, y, width, height, callback);
 ```
 
-The callback is a `void func(void)` function.
-
-#### Drawing (`fb.h`)
+#### Drawing
 
 ```c
 fb_txt(x, y, "text", fg_color, bg_color);
-fb_chr(x, y, 'A', fg_color, bg_color);
 fb_rect(x, y, width, height, color);
 fb_pixel(x, y, color);
-fb_border(x, y, width, height, color);  // outline only
+fb_border(x, y, width, height, color);
 ```
 
-All coordinates are absolute on screen (`w->x + offset`).
+All coordinates are absolute (`w->x + offset`).
 
 #### Keyboard
 
@@ -184,14 +209,13 @@ static void key(int k) {
 wins[wi].on_key = key;
 ```
 
-Arrows: `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT` (defined in `input.h`).
+Arrows: `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, `KEY_HOME`, `KEY_END`, `KEY_PGUP`, `KEY_PGDN`, `KEY_DEL` (defined in `input.h`).
 
 #### Mouse
 
 ```c
 static void click(int wi) {
-    int mx = mouse_x, my = mouse_y;  // globals
-    // ...
+    int mx = mouse_x, my = mouse_y;
 }
 wins[wi].on_click = click;
 ```
@@ -200,28 +224,31 @@ For continuous drawing (e.g., Paint), use `gui_tick`:
 
 ```c
 static void tick(void) {
-    if (!(mouse_btn & 1)) return;  // left button
+    if (!(mouse_btn & 1)) return;
     int mx = mouse_x, my = mouse_y;
-    // draw...
     need_render = 1;
 }
 gui_tick = tick;
 ```
 
-#### Close
+#### Files (SnowFS / FAT32 / initrd)
 
 ```c
-static void on_close(int wi) { gui_tick = 0; /* cleanup */ }
-wins[wi].on_close = on_close;
+uint8_t *file_read(const char *name, uint32_t *size_out);
+void file_iterate(void (*cb)(const char *name, uint32_t size));
+
+int snowfs_write(const char *name, const uint8_t *data, uint32_t size);
+int snowfs_read(const char *name, uint8_t *buf, uint32_t *size_out);
+int snowfs_delete(const char *name);
+int snowfs_iterate(void (*cb)(const char *name, uint32_t size));
+
+int fat_read_file(const char *name, uint8_t *buf, uint32_t *size_out);
+int fat_write_file(const char *name, const uint8_t *data, uint32_t size);
+int fat_delete_file(const char *name);
+void fat_iterate(void (*cb)(const char *name, uint32_t size));
 ```
 
-#### Per-window data
-
-```c
-wins[wi].userdata = pointer;  // void* — window-specific data
-```
-
-### 4. Colors (`gui.h`)
+#### Colors
 
 | Constant | Value | Usage |
 |---|---|---|
@@ -238,33 +265,3 @@ wins[wi].userdata = pointer;  // void* — window-specific data
 | `C_TBAR` | `0x16162A` | taskbar |
 | `C_MBG` | `0x1E1E35` | menu background |
 | `C_MFOC` | `0x3C50A0` | focused menu item |
-
-### 5. Full example (with keyboard and close)
-
-```c
-#include "../lunarsnow.h"
-
-static char text[64];
-static int len;
-
-static void draw(int wi) {
-    Win *w = &wins[wi];
-    fb_txt(w->x + 10, w->y + 28, "Type something:", C_TTT, w->bg);
-    fb_rect(w->x + 10, w->y + 48, 200, 18, C_TIN);
-    if (len > 0)
-        fb_txt(w->x + 12, w->y + 49, text, C_TTT, C_TIN);
-}
-
-static void key(int k) {
-    if (k == 8 && len > 0) text[--len] = 0;
-    if (k >= 32 && k <= 126 && len < 63) text[len++] = k;
-    text[len] = 0;
-}
-
-void prog_my_app(void) {
-    int wi = gui_wnew("My App", 100, 100, 300, 140);
-    wins[wi].draw = draw;
-    wins[wi].on_key = key;
-    len = 0; text[0] = 0;
-}
-```
