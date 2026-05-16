@@ -805,16 +805,18 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     if (run == -1) {
-        fb_clear(0x000000); fb_flip();
-        int dy = 10;
-        #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
-        DBG("Reboot: ACPI reset...");
+        /* Restart with spinner animation */
+        fb_clear(0x000000);
+        int cx = fb_w / 2;
+        fb_txt(cx - 44, fb_h/2 - 12, "LunarSnow OS", 0x3C50A0, 0x000000);
+        fb_txt(cx - 40, fb_h/2 + 8,  "Restarting...", 0xE6E6F0, 0x000000);
+        fb_flip();
         acpi_reset();
         for (volatile int d = 0; d < 30000; d++);
-        DBG("Reboot: keyboard reset...");
+        fb_txt(cx + 48, fb_h/2 + 8, "-", 0x5A5A7A, 0x000000); fb_flip();
         outb(0x64, 0xFE);
         for (volatile int d = 0; d < 30000; d++);
-        DBG("Reboot: triple fault...");
+        fb_txt(cx + 48, fb_h/2 + 8, "\\", 0x5A5A7A, 0x000000); fb_flip();
         __asm__ __volatile__(
             "pushq $0\n\t"
             "pushq $0\n\t"
@@ -823,32 +825,36 @@ void kmain(uint32_t magic, void *mbinfo)
             : : : "memory"
         );
         for (volatile int d = 0; d < 30000; d++);
-        DBG("Reboot: ALL FAILED, halting");
+        fb_txt(cx + 48, fb_h/2 + 8, "|", 0x5A5A7A, 0x000000); fb_flip();
         for (;;) asm("hlt");
-        #undef DBG
     }
 
-    /* Shutdown */
-    fb_clear(0x000000); fb_flip();
-    int dy = 10;
-    #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
-    DBG("Shutdown: PIIX4...");
+    /* Shutdown with spinner animation */
+    fb_clear(0x000000);
+    int cx = fb_w / 2;
+    fb_txt(cx - 44, fb_h/2 - 12, "LunarSnow OS", 0x3C50A0, 0x000000);
+    fb_txt(cx - 44, fb_h/2 + 8,  "Shutting down...", 0xE6E6F0, 0x000000);
+    fb_flip();
     piix4_poweroff();
-    DBG("Shutdown: ACPI...");
+    for (volatile int d = 0; d < 30000; d++);
+    fb_txt(cx + 52, fb_h/2 + 8, "-", 0x5A5A7A, 0x000000); fb_flip();
     acpi_poweroff();
-    DBG("Shutdown: APM...");
+    for (volatile int d = 0; d < 30000; d++);
+    fb_txt(cx + 52, fb_h/2 + 8, "\\", 0x5A5A7A, 0x000000); fb_flip();
     outb(0xB3, 0x00); outb(0xB2, 0x01);
     for (volatile int d = 0; d < 30000; d++);
+    fb_txt(cx + 52, fb_h/2 + 8, "|", 0x5A5A7A, 0x000000); fb_flip();
     outb(0xB3, 0x00); outb(0xB2, 0x02);
     for (volatile int d = 0; d < 30000; d++);
+    fb_txt(cx + 52, fb_h/2 + 8, "/", 0x5A5A7A, 0x000000); fb_flip();
     outb(0xB3, 0x00); outb(0xB2, 0x03);
     for (volatile int d = 0; d < 30000; d++);
+    fb_txt(cx + 52, fb_h/2 + 8, "-", 0x5A5A7A, 0x000000); fb_flip();
     outb(0xB3, 0x01); outb(0xB2, 0x53);
     for (volatile int d = 0; d < 30000; d++);
-    DBG("Shutdown: QEMU ports...");
+    fb_txt(cx + 52, fb_h/2 + 8, "\\", 0x5A5A7A, 0x000000); fb_flip();
     outw(0x604, 0x2000); outw(0xB004, 0x2000);
     outw(0x600, 0x34); outb(0xB2, 0x00);
-    DBG("Shutdown: Safe to power off");
+    fb_txt(cx - 48, fb_h/2 + 30, "Safe to power off", 0x5A5A7A, 0x000000); fb_flip();
     for (;;) asm("hlt");
-    #undef DBG
 }
