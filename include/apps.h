@@ -8,5 +8,6 @@ void cb_about(void);
 void cb_reboot(void);
 void cb_shutdown(void);
 void msgbox(const char *title, const char *msg);
+void power_dialog(void);
 
 #endif

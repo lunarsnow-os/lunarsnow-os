@@ -759,8 +759,7 @@ void kmain(uint32_t magic, void *mbinfo)
     gui_menu_add("About",         prog_about);
 
     gui_menu_header("Power");
-    gui_menu_add("Reboot",   cb_reboot);
-    gui_menu_add("Shutdown", cb_shutdown);
+    gui_menu_add("Desligar...", power_dialog);
 
     run = 1;
 

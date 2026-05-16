@@ -239,6 +239,48 @@ void cb_shutdown(void) { run = 0; }
 void cb_reboot(void) { run = -1; }
 
 /* ================================================================
+   POWER DIALOG — Windows XP-style shutdown / restart
+   ================================================================ */
+
+static int pwr_wi;
+
+static void pwr_icon(int x, int y, uint32_t fg) {
+    uint32_t bg = C_WBG;
+    fb_rect(x, y, 28, 28, bg);
+    fb_border(x + 2, y + 2, 24, 24, fg);
+    fb_rect(x + 12, y + 8, 4, 14, fg);
+    fb_rect(x + 12, y + 2, 4, 8, bg);
+}
+
+static void pwr_draw(int wi) {
+    Win *w = &wins[wi];
+    int x = w->x + 16, y = w->y + 30;
+    pwr_icon(x, y, 0x50D070);
+    fb_txt(x + 36, y + 2, "O que deseja fazer com o", C_TTT, w->bg);
+    fb_txt(x + 36, y + 18, "computador?", C_TTT, w->bg);
+}
+
+static void pwr_shut(void) {
+    int i;
+    for (i = 0; i < nw; i++) gui_wclose(0);
+    run = 0;
+}
+static void pwr_reboot(void) {
+    int i;
+    for (i = 0; i < nw; i++) gui_wclose(0);
+    run = -1;
+}
+
+void power_dialog(void) {
+    pwr_wi = gui_wnew("Desligar computador", (fb_w - 340) / 2, (fb_h - 180) / 2, 340, 180);
+    gui_wbtn(pwr_wi, "Desligar", 20, 90, 90, 32, pwr_shut);
+    gui_wbtn(pwr_wi, "Reiniciar", 125, 90, 90, 32, pwr_reboot);
+    gui_wbtn(pwr_wi, "Cancelar", 230, 90, 90, 32, app_close);
+    gui_set_dirty();
+    wins[pwr_wi].draw = pwr_draw;
+}
+
+/* ================================================================
    MESSAGE BOX
    ================================================================ */
 
