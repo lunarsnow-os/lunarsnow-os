@@ -800,7 +800,7 @@ void kmain(uint32_t magic, void *mbinfo)
             }
 
             /* App key routing — per-window */
-            if (act >= 0 && act < nw && wins[act].on_key && key != '\t' && key != 27) {
+            if (act >= 0 && act < nw && !wins[act].minimized && wins[act].on_key && key != '\t' && key != 27) {
                 wins[act].on_key(key);
                 goto render_choice;
             }

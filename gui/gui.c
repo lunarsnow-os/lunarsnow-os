@@ -58,7 +58,7 @@ int gui_wnew(const char *t, int x, int y, int w, int h) {
     wins[i].x = x; wins[i].y = y; wins[i].w = w; wins[i].h = h;
     s_cpy(wins[i].title, t, 24);
     wins[i].bg = C_WBG; wins[i].tb = C_TAC;
-    wins[i].nb = 0; wins[i].fc = 0;
+    wins[i].nb = 0; wins[i].fc = 0; wins[i].minimized = 0;
     wins[i].draw = 0; wins[i].on_key = 0; wins[i].on_click = 0;
     wins[i].on_rclick = 0; wins[i].on_close = 0;
     wins[i].userdata = 0;
@@ -95,6 +95,7 @@ void gui_wfront(int idx) {
 
 static void wdraw(int wi) {
     Win *w = &wins[wi];
+    if (w->minimized) return;
     int x = w->x, y = w->y, ww = w->w, hh = w->h;
     int a = (wi == act);
     uint32_t tc = a ? C_TAC : C_TIN;
@@ -106,6 +107,11 @@ static void wdraw(int wi) {
     fb_rect(x + 2, y + 20, ww - 4, hh - 22, w->bg);
     fb_rect(x + 2, y + 2, ww - 4, 18, tc);
     fb_txt(x + 6, y + 3, w->title, C_TTT, tc);
+
+    /* Minimize button */
+    int mbx = x + ww - 42, mby = y + 3;
+    fb_rect(mbx, mby, 15, 15, tc);
+    fb_rect(mbx + 3, mby + 11, 9, 2, C_TTT);
 
     /* Close button — draw X with lines */
     int cbx = x + ww - 18, cby = y + 3;
@@ -274,7 +280,10 @@ void gui_mouse_click(void) {
         for (int i = 0; i < nw; i++) {
             int bw = s_len(wins[i].title) * 8 + 12;
             if (bw > 140) bw = 140;
-            if (x >= bx && x < bx + bw) { gui_wfront(i); focus_mode = 0; return; }
+            if (x >= bx && x < bx + bw) {
+                if (wins[i].minimized) wins[i].minimized = 0;
+                gui_wfront(i); focus_mode = 0; return;
+            }
             bx += bw + 2;
         }
         return;
@@ -289,6 +298,15 @@ void gui_mouse_click(void) {
         if (x >= wx + ww - 18 && x < wx + ww - 3 &&
             y >= wy + 3 && y < wy + 18) {
             gui_wclose(i); return;
+        }
+        if (x >= wx + ww - 42 && x < wx + ww - 27 &&
+            y >= wy + 3 && y < wy + 18) {
+            wins[i].minimized = 1;
+            int found = 0;
+            for (int j = nw - 1; j >= 0; j--)
+                if (j != i && !wins[j].minimized) { gui_wfront(j); found = 1; break; }
+            if (!found && act == i) act = -1;
+            need_render = 1; return;
         }
         if (y >= wy + 2 && y < wy + 20) {
             gui_wfront(i);
@@ -329,8 +347,12 @@ void gui_render(void) {
     /* Start button */
     uint32_t scol = (focus_mode == 1 || hovered_start) ? C_STARTF : C_START;
     fb_rect(2, fb_h - TB_H + 2, ST_W, TB_H - 4, scol);
-    fb_rect(6, fb_h - TB_H + 7, 6, 14, 0x5A8ACC);
-    fb_txt(16, fb_h - TB_H + 6, "Start", C_TTT, scol);
+    int siy = fb_h - TB_H + 7;
+    fb_rect(6, siy, 4, 4, 0x5A8ACC);
+    fb_rect(6, siy + 8, 4, 4, 0x5A8ACC);
+    fb_rect(12, siy, 4, 4, 0x5A8ACC);
+    fb_rect(12, siy + 8, 4, 4, 0x5A8ACC);
+    fb_txt(20, fb_h - TB_H + 6, "Start", C_TTT, scol);
 
     int bx = ST_W + 6;
     int max_bx, sep_x;
@@ -343,6 +365,7 @@ void gui_render(void) {
     }
     for (int i = 0; i < nw; i++) {
         uint32_t c = (i == act) ? C_TBTNA : (i == hovered_app) ? 0x4A5AB0 : C_TBTN;
+        if (wins[i].minimized) c = 0x22223A;
         int bw = s_len(wins[i].title) * 8 + 12;
         if (bw > 140) bw = 140;
         if (bx + bw >= max_bx) bw = max_bx - bx - 2;

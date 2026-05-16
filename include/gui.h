@@ -13,7 +13,7 @@ typedef struct {
     char title[24];
     uint32_t bg, tb;
     Btn btns[MAX_B];
-    int nb, fc;
+    int nb, fc, minimized;
     void (*draw)(int wi);
     void (*on_key)(int k);
     void (*on_click)(int wi);
