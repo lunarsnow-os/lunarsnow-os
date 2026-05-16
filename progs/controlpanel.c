@@ -1,5 +1,6 @@
 #include "lunarsnow.h"
 #include "config.h"
+#include "smbus.h"
 
 static void draw_main(int wi) {
     Win *w = &wins[wi];
@@ -159,9 +160,44 @@ static void mouse_settings(void) {
     msgbox("Mouse", "Not implemented yet.");
 }
 
+static void draw_power(int wi) {
+    Win *w = &wins[wi];
+    int wx = w->x + 12, wy = w->y + 28;
+    fb_txt(wx, wy, "Power Status", C_TTT, w->bg);
+    fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
+    wy += 34;
+
+    if (!battery_present) {
+        fb_txt(wx + 8, wy, "No battery detected.", C_LBL, w->bg);
+        return;
+    }
+
+    char buf[64]; int p = 0;
+    const char *s1 = "Battery: ";
+    while (*s1) buf[p++] = *s1++;
+    str_int(buf + p, battery_percent);
+    while (buf[p]) p++;
+    buf[p++] = '%'; buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, battery_percent < 10 ? 0xFF3030 : battery_percent < 20 ? 0xFF9030 : C_LBL, w->bg);
+    wy += 20;
+
+    p = 0;
+    const char *s2 = battery_charging ? "Status: Charging" : "Status: Discharging";
+    while (*s2) buf[p++] = *s2++;
+    buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, battery_charging ? 0x30E030 : 0xFF9030, w->bg);
+}
+
+static void power_settings(void) {
+    int wi = gui_wnew("Control Panel - Power", (fb_w - 420) / 2, 50, 420, 220);
+    gui_wbtn(wi, "Close", 320, 150, 80, 30, app_close);
+    wins[wi].draw = draw_power;
+}
+
 void prog_controlpanel(void) {
-    int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 260);
+    int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 300);
     gui_wbtn(wi, "Mouse", 14, 72, 130, 26, mouse_settings);
     gui_wbtn(wi, "Display", 148, 72, 130, 26, display_settings);
+    gui_wbtn(wi, "Power", 14, 108, 130, 26, power_settings);
     wins[wi].draw = draw_main;
 }

@@ -6,6 +6,7 @@
 #include "gui.h"
 #include "apps.h"
 #include "progs.h"
+#include "smbus.h"
 
 void rtc_read(int *h, int *m, int *s);
 void rtc_read_date(int *d, int *m, int *y);

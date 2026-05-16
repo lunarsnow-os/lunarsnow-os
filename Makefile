@@ -8,7 +8,7 @@ LDFLAGS = -m elf_x86_64 -T linker.ld
 OBJS = \
   boot/boot.o \
   kernel/kernel.o \
-  drv/fb.o drv/input.o \
+  drv/fb.o drv/input.o drv/smbus.o \
   gui/gui.o gui/apps.o gui/progs.o \
   fs/fs.o \
   vbe/vbe_real.o vbe/vbe_tramp.o \

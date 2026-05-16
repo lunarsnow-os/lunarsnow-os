@@ -4,6 +4,7 @@
 #include "fb.h"
 #include "input.h"
 #include "gui.h"
+#include "smbus.h"
 
 /* ================================================================
    STATE
@@ -331,7 +332,15 @@ void gui_render(void) {
     fb_rect(6, fb_h - TB_H + 7, 6, 14, 0x5A8ACC);
     fb_txt(16, fb_h - TB_H + 6, "Start", C_TTT, scol);
 
-    int bx = ST_W + 6, max_bx = fb_w - 76;
+    int bx = ST_W + 6;
+    int max_bx, sep_x;
+    if (battery_present) {
+        max_bx = fb_w - 146;
+        sep_x = fb_w - 76;
+    } else {
+        max_bx = fb_w - 76;
+        sep_x = max_bx + 4;
+    }
     for (int i = 0; i < nw; i++) {
         uint32_t c = (i == act) ? C_TBTNA : (i == hovered_app) ? 0x4A5AB0 : C_TBTN;
         int bw = s_len(wins[i].title) * 8 + 12;
@@ -353,9 +362,31 @@ void gui_render(void) {
     /* Fill remainder of taskbar */
     fb_rect(bx, fb_h - TB_H + 2, max_bx - bx - 2, TB_H - 4, C_TBAR);
 
+    /* Battery indicator */
+    if (battery_present) {
+        int ba_x = max_bx + 4;
+        int ba_iy = fb_h - TB_H + (TB_H - 10) / 2;
+        uint32_t ba_c = battery_percent < 10 ? 0xFF3030
+                      : battery_percent < 20 ? 0xFF9030
+                      : battery_charging  ? 0x30E030 : 0x60C060;
+        int fill = (12 * battery_percent) / 100;
+        if (fill < 0) fill = 0;
+        if (fill > 12) fill = 12;
+        fb_border(ba_x, ba_iy, 14, 10, ba_c);
+        if (fill > 0) fb_rect(ba_x + 1, ba_iy + 1, fill, 8, ba_c);
+        fb_rect(ba_x + 14, ba_iy + 3, 2, 4, ba_c);
+        if (battery_charging) {
+            fb_txt(ba_x + 3, ba_iy + 1, "~", 0x16162A, ba_c);
+        }
+        char buf[8]; int bi = 0;
+        str_int(buf, battery_percent);
+        while (buf[bi]) bi++;
+        buf[bi++] = '%'; buf[bi] = 0;
+        fb_txt(ba_x + 20, fb_h - TB_H + 6, buf, ba_c, C_TBAR);
+    }
+
     /* Separator */
-    int sx = max_bx + 4;
-    fb_rect(sx, fb_h - TB_H + 4, 1, TB_H - 8, 0x3C3C60);
+    fb_rect(sep_x, fb_h - TB_H + 4, 1, TB_H - 8, 0x3C3C60);
 
     /* Clock with seconds */
     int h, m, s; rtc_read(&h, &m, &s);

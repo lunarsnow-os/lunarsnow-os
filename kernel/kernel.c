@@ -4,6 +4,7 @@
 #include "config.h"
 #include "fs.h"
 #include "io.h"
+#include "smbus.h"
 
 /* ================================================================
    CMOS / RTC
@@ -731,6 +732,9 @@ void kmain(uint32_t magic, void *mbinfo)
         boot_sec_total = h * 3600 + m * 60 + s;
     }
 
+    smbus_init();
+    battery_poll();
+
     /* Build dynamic menu — categorized */
     gui_menu_header("Apps");
     gui_menu_add("Terminal",   cb_term);
@@ -761,6 +765,7 @@ void kmain(uint32_t magic, void *mbinfo)
     run = 1;
 
     int clock_ticks = 0;
+    int bat_ticks = 0;
     while (run > 0) {
         int prev_btn = mouse_btn;
         int prev_mx = mouse_x, prev_my = mouse_y;
@@ -852,6 +857,13 @@ void kmain(uint32_t magic, void *mbinfo)
         if (clock_ticks >= 1000) {
             need_render = 1;
             clock_ticks = 0;
+        }
+
+        /* Poll battery every ~5000 polls (~5 seconds) */
+        bat_ticks++;
+        if (bat_ticks >= 5000) {
+            bat_ticks = 0;
+            battery_poll();
         }
 
         int mouse_moved = (mouse_x != prev_mx || mouse_y != prev_my);
