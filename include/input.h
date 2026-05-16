@@ -20,7 +20,7 @@ void kb_poll(void);
 int  kb_pop(void);
 void mouse_init(void);
 
-extern int mouse_x, mouse_y, mouse_btn, mouse_wheel;
+extern int mouse_x, mouse_y, mouse_btn, mouse_wheel, mouse_speed;
 extern int kb_mod_alt;
 
 #endif

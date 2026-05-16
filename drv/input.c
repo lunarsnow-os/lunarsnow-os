@@ -103,6 +103,7 @@ static int mouse_cycle;
 static uint8_t mouse_pkt[4];
 static int mouse_4byte;
 int mouse_wheel;
+int mouse_speed = 2;
 
 static void mouse_process_pkt(void)
 {
@@ -111,7 +112,7 @@ static void mouse_process_pkt(void)
     if (mouse_pkt[0] & 0x10) dx -= 256;
     if (mouse_pkt[0] & 0x20) dy -= 256;
     mouse_btn = mouse_pkt[0] & 3;
-    mouse_x += dx * 2; mouse_y -= dy * 2;
+    mouse_x += dx * mouse_speed; mouse_y -= dy * mouse_speed;
     if (mouse_x < 0) mouse_x = 0;
     if (mouse_x >= fb_w) mouse_x = fb_w - 1;
     if (mouse_y < 0) mouse_y = 0;

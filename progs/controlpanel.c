@@ -1,6 +1,7 @@
 #include "lunarsnow.h"
 #include "config.h"
 #include "smbus.h"
+#include "fs.h"
 
 static void draw_main(int wi) {
     Win *w = &wins[wi];
@@ -15,7 +16,10 @@ static void draw_main(int wi) {
     fb_rect(wx + 4, wy + 16, w->w - 32, 1, 0x282845);
 }
 
-/* Resolution confirmation with 5-second auto-revert (RTC-based) */
+/* ================================================================
+   DISPLAY SETTINGS
+   ================================================================ */
+
 static int  res_pending;
 static int  res_old_w, res_old_h;
 static int  res_confirm_wi;
@@ -156,9 +160,57 @@ void display_settings(void) {
     wins[wi].draw = draw_display;
 }
 
-static void mouse_settings(void) {
-    msgbox("Mouse", "Not implemented yet.");
+/* ================================================================
+   MOUSE SETTINGS
+   ================================================================ */
+
+static int mouse_wi;
+
+static void mouse_update_label(void)
+{
+    if (mouse_wi < 0) return;
+    need_render = 1;
 }
+
+static void mouse_spd_1(void) { mouse_speed = 1; mouse_update_label(); }
+static void mouse_spd_2(void) { mouse_speed = 2; mouse_update_label(); }
+static void mouse_spd_3(void) { mouse_speed = 3; mouse_update_label(); }
+static void mouse_spd_4(void) { mouse_speed = 4; mouse_update_label(); }
+static void mouse_spd_5(void) { mouse_speed = 5; mouse_update_label(); }
+
+static void draw_mouse(int wi) {
+    Win *w = &wins[wi];
+    int wx = w->x + 12, wy = w->y + 28;
+
+    fb_txt(wx, wy, "Mouse Settings", C_TTT, w->bg);
+    fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
+    wy += 34;
+
+    fb_txt(wx + 8, wy, "Pointer speed:", C_LBL, w->bg); wy += 22;
+
+    const char *labels[] = { "1 - Slow", "2 - Normal", "3 - Fast", "4 - Very Fast", "5 - Turbo" };
+    for (int i = 0; i < 5; i++) {
+        int sel = (mouse_speed == i + 1);
+        fb_txt(wx + 12, wy, sel ? "[x]" : "[ ]", sel ? C_TAC : C_LBL, w->bg);
+        fb_txt(wx + 40, wy, labels[i], C_LBL, w->bg);
+        wy += 20;
+    }
+}
+
+void mouse_settings(void) {
+    mouse_wi = gui_wnew("Control Panel - Mouse", (fb_w - 360) / 2, 60, 360, 280);
+    gui_wbtn(mouse_wi, "1", 140, 58, 36, 20, mouse_spd_1);
+    gui_wbtn(mouse_wi, "2", 140, 78, 36, 20, mouse_spd_2);
+    gui_wbtn(mouse_wi, "3", 140, 98, 36, 20, mouse_spd_3);
+    gui_wbtn(mouse_wi, "4", 140, 118, 36, 20, mouse_spd_4);
+    gui_wbtn(mouse_wi, "5", 140, 138, 36, 20, mouse_spd_5);
+    gui_wbtn(mouse_wi, "Close", 260, 210, 80, 30, app_close);
+    wins[mouse_wi].draw = draw_mouse;
+}
+
+/* ================================================================
+   POWER / BATTERY
+   ================================================================ */
 
 static void draw_power(int wi) {
     Win *w = &wins[wi];
@@ -189,15 +241,106 @@ static void draw_power(int wi) {
 }
 
 static void power_settings(void) {
-    int wi = gui_wnew("Control Panel - Power", (fb_w - 420) / 2, 50, 420, 220);
-    gui_wbtn(wi, "Close", 320, 150, 80, 30, app_close);
+    int wi = gui_wnew("Control Panel - Power", (fb_w - 360) / 2, 50, 360, 180);
+    gui_wbtn(wi, "Close", 260, 120, 80, 30, app_close);
     wins[wi].draw = draw_power;
 }
 
+/* ================================================================
+   SYSTEM INFO
+   ================================================================ */
+
+static void draw_sysinfo(int wi) {
+    Win *w = &wins[wi];
+    int wx = w->x + 12, wy = w->y + 28;
+    char buf[96]; int p;
+
+    fb_txt(wx, wy, "System Information", C_TTT, w->bg);
+    fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
+    wy += 30;
+
+    /* OS */
+    p = 0;
+    const char *os = OS_NAME " ";
+    while (*os) buf[p++] = *os++;
+    const char *ver = OS_VER " " OS_ARCH;
+    while (*ver) buf[p++] = *ver++;
+    buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_TTT, w->bg); wy += 18;
+
+    /* CPU vendor */
+    p = 0;
+    const char *c0 = "CPU: ";
+    while (*c0) buf[p++] = *c0++;
+    { const char *src = cpu_vendor; while (*src) buf[p++] = *src++; }
+    buf[p++] = ' ';
+    { const char *src = cpu_brand; while (*src && p < 94) buf[p++] = *src++; }
+    buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 18;
+
+    /* RAM */
+    uint64_t mb = total_ram / (1024 * 1024);
+    p = 0;
+    const char *r0 = "RAM: ";
+    while (*r0) buf[p++] = *r0++;
+    str_int(buf + p, (int)mb);
+    while (buf[p]) p++;
+    buf[p++] = ' '; buf[p++] = 'M'; buf[p++] = 'B'; buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 18;
+
+    /* Display */
+    extern int fb_w, fb_h, fb_bpp;
+    p = 0;
+    const char *d0 = "Display: ";
+    while (*d0) buf[p++] = *d0++;
+    str_int(buf + p, fb_w); while (buf[p]) p++;
+    buf[p++] = 'x'; str_int(buf + p, fb_h); while (buf[p]) p++;
+    buf[p++] = ' '; buf[p++] = '@'; buf[p++] = ' ';
+    str_int(buf + p, fb_bpp); while (buf[p]) p++;
+    buf[p++] = 'b'; buf[p++] = 'p'; buf[p++] = 'p'; buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 18;
+
+    /* Uptime */
+    int h, m, s; rtc_read(&h, &m, &s);
+    int sec = h * 3600 + m * 60 + s - boot_sec_total;
+    if (sec < 0) sec += 86400;
+    p = 0;
+    const char *u0 = "Uptime: ";
+    while (*u0) buf[p++] = *u0++;
+    str_int(buf + p, sec / 3600); while (buf[p]) p++;
+    buf[p++] = 'h'; buf[p++] = ' ';
+    str_int(buf + p, (sec % 3600) / 60); while (buf[p]) p++;
+    buf[p++] = 'm'; buf[p++] = ' ';
+    str_int(buf + p, sec % 60); while (buf[p]) p++;
+    buf[p++] = 's'; buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg); wy += 18;
+
+    /* Disk */
+    p = 0;
+    const char *k0 = "Disk: ";
+    while (*k0) buf[p++] = *k0++;
+    str_int(buf + p, disk_count()); while (buf[p]) p++;
+    buf[p++] = ' '; buf[p++] = 'd'; buf[p++] = 'r'; buf[p++] = 'i'; buf[p++] = 'v'; buf[p++] = 'e';
+    if (disk_count() != 1) buf[p++] = 's';
+    buf[p] = 0;
+    fb_txt(wx + 8, wy, buf, C_LBL, w->bg);
+}
+
+static void sysinfo_settings(void) {
+    int wi = gui_wnew("Control Panel - System", (fb_w - 440) / 2, 40, 440, 300);
+    gui_wbtn(wi, "Close", 340, 240, 80, 30, app_close);
+    wins[wi].draw = draw_sysinfo;
+}
+
+/* ================================================================
+   ENTRY
+   ================================================================ */
+
 void prog_controlpanel(void) {
-    int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 300);
-    gui_wbtn(wi, "Mouse", 14, 72, 130, 26, mouse_settings);
+    int wi = gui_wnew("Control Panel", (fb_w - 420) / 2, 50, 420, 340);
+    gui_wbtn(wi, "System", 14, 72, 130, 26, sysinfo_settings);
+    gui_wbtn(wi, "Mouse", 14, 104, 130, 26, mouse_settings);
     gui_wbtn(wi, "Display", 148, 72, 130, 26, display_settings);
-    gui_wbtn(wi, "Power", 14, 108, 130, 26, power_settings);
+    gui_wbtn(wi, "Power", 148, 104, 130, 26, power_settings);
     wins[wi].draw = draw_main;
 }
