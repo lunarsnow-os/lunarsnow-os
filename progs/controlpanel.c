@@ -161,22 +161,17 @@ void display_settings(void) {
 }
 
 /* ================================================================
-   MOUSE SETTINGS
+   MOUSE SETTINGS — slider + cursor selector
    ================================================================ */
+
+#define TRACK_W 200
+#define TRACK_X 22
 
 static int mouse_wi;
 
-static void mouse_update_label(void)
-{
-    if (mouse_wi < 0) return;
-    need_render = 1;
-}
-
-static void mouse_spd_1(void) { mouse_speed = 1; mouse_update_label(); }
-static void mouse_spd_2(void) { mouse_speed = 2; mouse_update_label(); }
-static void mouse_spd_3(void) { mouse_speed = 3; mouse_update_label(); }
-static void mouse_spd_4(void) { mouse_speed = 4; mouse_update_label(); }
-static void mouse_spd_5(void) { mouse_speed = 5; mouse_update_label(); }
+static void curs_0(void) { cursor_style = 0; need_render = 1; }
+static void curs_1(void) { cursor_style = 1; need_render = 1; }
+static void curs_2(void) { cursor_style = 2; need_render = 1; }
 
 static void draw_mouse(int wi) {
     Win *w = &wins[wi];
@@ -186,26 +181,58 @@ static void draw_mouse(int wi) {
     fb_rect(wx, wy + 20, w->w - 24, 1, 0x3C50A0);
     wy += 34;
 
-    fb_txt(wx + 8, wy, "Pointer speed:", C_LBL, w->bg); wy += 22;
+    /* Pointer speed */
+    fb_txt(wx + 8, wy, "Pointer speed:", C_LBL, w->bg);
+    char buf[16]; int p = 0;
+    str_int(buf, mouse_speed);
+    while (buf[p]) p++;
+    buf[p++] = '/'; buf[p++] = '5'; buf[p] = 0;
+    fb_txt(wx + 160, wy, buf, C_TTT, w->bg);
+    wy += 24;
 
-    const char *labels[] = { "1 - Slow", "2 - Normal", "3 - Fast", "4 - Very Fast", "5 - Turbo" };
-    for (int i = 0; i < 5; i++) {
-        int sel = (mouse_speed == i + 1);
-        fb_txt(wx + 12, wy, sel ? "[x]" : "[ ]", sel ? C_TAC : C_LBL, w->bg);
-        fb_txt(wx + 40, wy, labels[i], C_LBL, w->bg);
-        wy += 20;
+    /* Slider track */
+    int tx = w->x + TRACK_X, ty = wy;
+    fb_rect(tx, ty, TRACK_W, 4, 0x3C3C60);
+    int thumb = (mouse_speed - 1) * (TRACK_W - 12) / 4;
+    fb_rect(tx + thumb, ty - 4, 12, 12, C_TAC);
+    fb_rect(tx + thumb + 1, ty - 3, 10, 10, 0x5A7ADA);
+
+    /* Labels */
+    fb_txt(tx, ty + 8, "1", C_LBL, w->bg);
+    fb_txt(tx + TRACK_W - 8, ty + 8, "5", C_LBL, w->bg);
+    wy += 36;
+
+    /* Cursor style */
+    fb_txt(wx + 8, wy, "Cursor style:", C_LBL, w->bg); wy += 22;
+    for (int i = 0; i < 3; i++) {
+        int sel = (cursor_style == i);
+        int cx = wx + 12 + i * 100;
+        fb_txt(cx, wy, sel ? "[x]" : "[ ]", sel ? C_TAC : C_LBL, w->bg);
+        fb_txt(cx + 24, wy, curs_names[i], C_LBL, w->bg);
+    }
+}
+
+static void mouse_click(int wi) {
+    Win *w = &wins[wi];
+    int tx = w->x + TRACK_X, ty = w->y + 86;
+    int mx = mouse_x, my = mouse_y;
+    if (my >= ty - 6 && my < ty + 10 && mx >= tx && mx < tx + TRACK_W) {
+        int val = (mx - tx) * 4 / TRACK_W + 1;
+        if (val < 1) val = 1;
+        if (val > 5) val = 5;
+        mouse_speed = val;
+        need_render = 1;
     }
 }
 
 void mouse_settings(void) {
-    mouse_wi = gui_wnew("Control Panel - Mouse", (fb_w - 360) / 2, 60, 360, 280);
-    gui_wbtn(mouse_wi, "1", 140, 58, 36, 20, mouse_spd_1);
-    gui_wbtn(mouse_wi, "2", 140, 78, 36, 20, mouse_spd_2);
-    gui_wbtn(mouse_wi, "3", 140, 98, 36, 20, mouse_spd_3);
-    gui_wbtn(mouse_wi, "4", 140, 118, 36, 20, mouse_spd_4);
-    gui_wbtn(mouse_wi, "5", 140, 138, 36, 20, mouse_spd_5);
-    gui_wbtn(mouse_wi, "Close", 260, 210, 80, 30, app_close);
+    mouse_wi = gui_wnew("Control Panel - Mouse", (fb_w - 380) / 2, 60, 380, 260);
+    gui_wbtn(mouse_wi, "Arrow", 60, 122, 70, 22, curs_0);
+    gui_wbtn(mouse_wi, "Crosshair", 145, 122, 80, 22, curs_1);
+    gui_wbtn(mouse_wi, "I-Beam", 240, 122, 70, 22, curs_2);
+    gui_wbtn(mouse_wi, "Close", 280, 210, 80, 30, app_close);
     wins[mouse_wi].draw = draw_mouse;
+    wins[mouse_wi].on_click = mouse_click;
 }
 
 /* ================================================================
