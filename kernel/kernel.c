@@ -386,11 +386,20 @@ static int fb_init(uint32_t magic, void *mbinfo)
 static void boot_screen(void)
 {
     fb_clear(0x000000);
+    int cx = fb_w / 2;
     char *title = OS_NAME " x64";
-    fb_txt((fb_w - s_len(title) * 8) / 2, fb_h / 2 - 20, title, 0xE6E6F0, 0x000000);
+    fb_txt(cx - s_len(title) * 4, fb_h / 2 - 24, title, 0xE6E6F0, 0x000000);
     char *ver = OS_VER;
-    fb_txt((fb_w - s_len(ver) * 8) / 2, fb_h / 2, ver, 0x5A5A7A, 0x000000);
-    fb_flip();
+    fb_txt(cx - s_len(ver) * 4, fb_h / 2 - 4, ver, 0x5A5A7A, 0x000000);
+    /* Expanding bar from center */
+    int by = fb_h / 2 + 18;
+    for (int w = 0; w <= 200; w += 4) {
+        fb_rect(cx - w / 2, by, w, 3, 0x3C50A0);
+        fb_flip();
+        for (volatile int d = 0; d < 2000; d++);
+    }
+    /* Hold briefly */
+    for (volatile int d = 0; d < 40000; d++);
 }
 
 /* ================================================================
