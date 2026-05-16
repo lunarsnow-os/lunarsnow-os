@@ -121,8 +121,6 @@ void battery_poll(void)
     static int sim_mode;
     uint16_t val;
 
-    if (!smb_base) return;
-
     if (!init_done) {
         init_done = 1;
         battery_percent = 0;
@@ -130,61 +128,40 @@ void battery_poll(void)
         battery_present = 0;
         sim_mode = 0;
 
-        static const uint8_t addrs[] = { 0x16, 0x0B, 0x0C };
-        for (int i = 0; i < 3; i++) {
-            if (smb_read_word(smb_base, addrs[i], 0x0D, &val) < 0) continue;
-            int pct = val;
-            if (pct > 100) pct = (pct + 50) / 100;
-            if (pct > 100) pct = 100;
-            battery_percent = pct;
-            battery_present = 1;
-            last_pct = pct;
-            bat_addr = addrs[i];
-
-            if (smb_read_word(smb_base, addrs[i], 0x09, &val) == 0)
-                battery_charging = (val & 0x0008) ? 1 : 0;
-            return;
-        }
-
-        /* No real battery found — simulate in VMs for testing */
+        /* In VMs, skip SMBus entirely and use simulation */
         if (detect_vm()) {
             battery_present = 1;
             battery_percent = 80;
             battery_charging = 1;
             last_pct = 80;
             sim_mode = 1;
+            return;
+        }
+
+        /* Real hardware: try SMBus Smart Battery probe */
+        if (smb_base) {
+            static const uint8_t addrs[] = { 0x16, 0x0B, 0x0C };
+            for (int i = 0; i < 3; i++) {
+                if (smb_read_word(smb_base, addrs[i], 0x0D, &val) < 0) continue;
+                int pct = val;
+                if (pct > 100) pct = (pct + 50) / 100;
+                if (pct > 100) pct = 100;
+                battery_percent = pct;
+                battery_present = 1;
+                last_pct = pct;
+                bat_addr = addrs[i];
+
+                if (smb_read_word(smb_base, addrs[i], 0x09, &val) == 0)
+                    battery_charging = (val & 0x0008) ? 1 : 0;
+                return;
+            }
         }
         return;
     }
 
     if (!battery_present) return;
 
-    if (!sim_mode) {
-        /* Real Smart Battery read */
-        if (smb_read_word(smb_base, bat_addr, 0x0D, &val) < 0) return;
-
-        int pct = val;
-        if (pct > 100) pct = (pct + 50) / 100;
-        if (pct > 100) pct = 100;
-        battery_percent = pct;
-
-        if (pct != last_pct) {
-            last_pct = pct;
-            need_render = 1;
-        }
-
-        static int charge_cnt;
-        if (++charge_cnt >= 6) {
-            charge_cnt = 0;
-            if (smb_read_word(smb_base, bat_addr, 0x09, &val) == 0) {
-                int chg = (val & 0x0008) ? 1 : 0;
-                if (chg != battery_charging) {
-                    battery_charging = chg;
-                    need_render = 1;
-                }
-            }
-        }
-    } else {
+    if (sim_mode) {
         /* Simulation mode for VMs — cycle 80% → 0% → 100% → 80% */
         static int hold;
         if (++hold < 60) return;
@@ -204,5 +181,31 @@ void battery_poll(void)
             }
         }
         need_render = 1;
+        return;
+    }
+
+    /* Real Smart Battery read */
+    if (smb_read_word(smb_base, bat_addr, 0x0D, &val) < 0) return;
+
+    int pct = val;
+    if (pct > 100) pct = (pct + 50) / 100;
+    if (pct > 100) pct = 100;
+    battery_percent = pct;
+
+    if (pct != last_pct) {
+        last_pct = pct;
+        need_render = 1;
+    }
+
+    static int charge_cnt;
+    if (++charge_cnt >= 6) {
+        charge_cnt = 0;
+        if (smb_read_word(smb_base, bat_addr, 0x09, &val) == 0) {
+            int chg = (val & 0x0008) ? 1 : 0;
+            if (chg != battery_charging) {
+                battery_charging = chg;
+                need_render = 1;
+            }
+        }
     }
 }
