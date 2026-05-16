@@ -50,8 +50,8 @@ drv/                → Drivers
 ├── fb.c            → Framebuffer: pixel, rect, texto, flip (double buffer)
 ├── input.c         → Teclado + rato PS/2
 gui/                → Interface gráfica
-├── gui.c           → Gestor de janelas, botões, taskbar, relógio, menu, cursor
-├── apps.c          → Infraestrutura: terminal, calculadora, msgbox, callbacks
+├── gui.c           → Gestor de janelas (minimizar _), botões, taskbar, menu Start, cursor
+├── apps.c          → Terminal, calculadora, caixas de diálogo (msgbox), callbacks
 ├── progs.c         → Registo de programas
 fs/fs.c             → Sistema de ficheiros unificado (ATA PIO, partições, FAT32, SnowFS)
 vbe/                → VESA BIOS Extensions (modos de vídeo)
@@ -95,7 +95,7 @@ create_fat_disk.sh  → Cria imagem de disco 128MB (FAT32 + SnowFS)
 | Paint | `progs/paint.c` | Desenho com rato, paleta 12 cores, Save/Load BMP via SnowFS |
 | File Manager | `progs/filemgr.c` | Navega initrd + FAT32 + SnowFS, abre .txt no Notepad, New/Del |
 | About | `progs/about.c` | CPU, vendor, RAM, uptime, resolução, initrd, logo LunarSnow |
-| Control Panel | `progs/controlpanel.c` | Definições do rato, ecrã (VBE) e energia/bateria |
+| Control Panel | `progs/controlpanel.c` | Rato (velocidade slide), ecrã (VBE), energia/bateria, CPU, RAM, uptime |
 | Clock | `progs/clock.c` | Relógio analógico + calendário |
 | Task Manager | `progs/taskmgr.c` | RAM, CPU vendor, disco, versão |
 | BMP Viewer | `progs/bmpview.c` | Abre BMP de initrd/SnowFS/FAT com scaling |
@@ -143,6 +143,9 @@ Em VMs (VirtualBox, QEMU) a bateria é **simulada** (cicla 80%→0%→100%) para
 |---|---|
 | Super (Win) | Abre/fecha menu Start |
 | Tab | Navega entre janelas/botões |
+| Botão _ | Minimiza janela ativa |
+| Clicar taskbar (janela ativa) | Minimiza |
+| Clicar taskbar (minimizada) | Restaura |
 | Alt+F4 | Fecha janela ativa |
 | Escape | Fecha menu / sub-janela |
 | Enter/Space | Ativa botão / entrada do menu |
