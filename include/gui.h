@@ -78,8 +78,7 @@ extern void (*gui_tick)(void);
 extern int hovered_app;
 extern int hovered_start;
 extern int hovered_menu;
-extern int cursor_style;
-extern const char *curs_names[];
+
 void gui_hover_check(void);
 
 #endif

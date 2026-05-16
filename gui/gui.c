@@ -143,21 +143,10 @@ static void wdraw(int wi) {
 #define CUR_W 9
 #define CUR_H 13
 
-static const uint8_t curs_arrow[] = {
+static const uint8_t curs_img[] = {
     0x80, 0xC0, 0xA0, 0x90, 0x88, 0x84,
     0x82, 0x81, 0xFF, 0x7E, 0x3C, 0x18
 };
-static const uint8_t curs_cross[] = {
-    0x00, 0x10, 0x10, 0x10, 0x10, 0x3E,
-    0x3E, 0x10, 0x10, 0x10, 0x10, 0x00
-};
-static const uint8_t curs_ibeam[] = {
-    0x00, 0x10, 0x10, 0x10, 0x10, 0x10,
-    0x10, 0x10, 0x10, 0x10, 0x10, 0x00
-};
-static const uint8_t *curs_table[] = { curs_arrow, curs_cross, curs_ibeam };
-const char *curs_names[] = { "Arrow", "Crosshair", "I-Beam" };
-int cursor_style;
 
 static uint32_t curs_save[CUR_H][CUR_W];
 static int curs_sx = -1, curs_sy = -1;
@@ -229,18 +218,15 @@ static void curs_save_area(void) {
 }
 
 static void curs_draw_at(int x, int y) {
-    int s = cursor_style;
-    if (s < 0 || s >= 3) s = 0;
-    const uint8_t *img = curs_table[s];
     int nr = 12;
     for (int r = 0; r < nr && y + r + 1 < fb_h; r++) {
-        uint8_t bits = img[r];
+        uint8_t bits = curs_img[r];
         for (int c = 0; c < 8 && x + c + 1 < fb_w; c++)
             if (bits & (0x80 >> c))
                 sbuf[(y + r + 1) * fb_w + (x + c + 1)] = 0x000000;
     }
     for (int r = 0; r < nr && y + r < fb_h; r++) {
-        uint8_t bits = img[r];
+        uint8_t bits = curs_img[r];
         for (int c = 0; c < 8 && x + c < fb_w; c++)
             if (bits & (0x80 >> c))
                 sbuf[(y + r) * fb_w + (x + c)] = 0xFFFFFF;
