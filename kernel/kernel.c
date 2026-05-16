@@ -385,7 +385,7 @@ static int fb_init(uint32_t magic, void *mbinfo)
 
 static void xp_bar(int step)
 {
-    int bw = 240, bh = 8, bx = (fb_w - bw) / 2, by = fb_h - 30;
+    int bw = 240, bh = 8, bx = (fb_w - bw) / 2, by = fb_h - 80;
     fb_rect(bx, by, bw, bh, 0x0A1A3A);
     fb_border(bx, by, bw, bh, 0x2A4A7A);
     uint32_t bc = 0x5A9AE0;
@@ -399,15 +399,17 @@ static void xp_show(const char *msg)
 {
     fb_clear(0x000000);
     int cx = fb_w / 2;
-    fb_txt(cx - 44, fb_h / 3, "LunarSnow OS", 0xE6E6F0, 0x000000);
-    if (msg) fb_txt(cx - s_len(msg) * 4, fb_h / 3 + 22, msg, 0xA0A0B0, 0x000000);
+    fb_txt(cx - s_len("LunarSnow OS") * 4, fb_h * 2 / 5, "LunarSnow OS", 0xE6E6F0, 0x000000);
+    if (msg) fb_txt(cx - s_len(msg) * 4, fb_h * 2 / 5 + 22, msg, 0xA0A0B0, 0x000000);
+    fb_flip();
 }
 
 static void boot_screen(void)
 {
-    int cx = fb_w / 2;
     fb_clear(0x000000);
-    fb_txt(cx - s_len(OS_NAME " x64") * 4, fb_h / 3, OS_NAME " x64", 0xE6E6F0, 0x000000);
+    int cx = fb_w / 2;
+    fb_txt(cx - s_len(OS_NAME " x64") * 4, fb_h * 2 / 5, OS_NAME " x64", 0xE6E6F0, 0x000000);
+    fb_flip();
     for (int s = 0; s < 180; s++) {
         xp_bar(s);
         fb_flip();
