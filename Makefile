@@ -1,7 +1,7 @@
 CC = gcc
 AS = as
 LD = ld
-CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -Wextra -Os -I include
+CFLAGS = -m64 -ffreestanding -nostdlib -mno-red-zone -mno-sse -mno-sse2 -Wall -Wextra -Os -I include -MMD -MP
 ASFLAGS = --64
 LDFLAGS = -m elf_x86_64 -T linker.ld
 
@@ -15,6 +15,8 @@ OBJS = \
   $(patsubst progs/%.c,progs/%.o,$(wildcard progs/*.c))
 
 all: lunarsnow.elf
+
+-include $(OBJS:.o=.d)
 
 lunarsnow.elf: $(OBJS) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJS)
@@ -31,6 +33,7 @@ lunarsnow.elf: $(OBJS) linker.ld
 clean:
 	rm -f *.o lunarsnow.elf lunarsnow.iso initrd.tar fat_disk.raw
 	rm -f boot/*.o kernel/*.o drv/*.o gui/*.o fs/*.o vbe/*.o progs/*.o tools/mksnowfs
+	rm -f boot/*.d kernel/*.d drv/*.d gui/*.d fs/*.d vbe/*.d progs/*.d
 	rm -rf iso/
 
 tools/mksnowfs: tools/mksnowfs.c
