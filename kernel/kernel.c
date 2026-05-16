@@ -380,26 +380,39 @@ static int fb_init(uint32_t magic, void *mbinfo)
 }
 
 /* ================================================================
-   BOOT SCREEN
+   BOOT / POWER — Windows XP style
    ================================================================ */
 
-static void boot_screen(void)
+static void xp_bar(int step)
+{
+    int bw = 240, bh = 8, bx = (fb_w - bw) / 2, by = fb_h - 30;
+    fb_rect(bx, by, bw, bh, 0x0A1A3A);
+    fb_border(bx, by, bw, bh, 0x2A4A7A);
+    uint32_t bc = 0x5A9AE0;
+    for (int i = 0; i < bw; i++) {
+        int p = (i + step) % 48;
+        if ((p % 16) < 8) fb_rect(bx + i, by + 1, 1, bh - 2, bc);
+    }
+}
+
+static void xp_show(const char *msg)
 {
     fb_clear(0x000000);
     int cx = fb_w / 2;
-    char *title = OS_NAME " x64";
-    fb_txt(cx - s_len(title) * 4, fb_h / 2 - 24, title, 0xE6E6F0, 0x000000);
-    char *ver = OS_VER;
-    fb_txt(cx - s_len(ver) * 4, fb_h / 2 - 4, ver, 0x5A5A7A, 0x000000);
-    /* Expanding bar from center */
-    int by = fb_h / 2 + 18;
-    for (int w = 0; w <= 200; w += 4) {
-        fb_rect(cx - w / 2, by, w, 3, 0x3C50A0);
+    fb_txt(cx - 44, fb_h / 3, "LunarSnow OS", 0xE6E6F0, 0x000000);
+    if (msg) fb_txt(cx - s_len(msg) * 4, fb_h / 3 + 22, msg, 0xA0A0B0, 0x000000);
+}
+
+static void boot_screen(void)
+{
+    int cx = fb_w / 2;
+    fb_clear(0x000000);
+    fb_txt(cx - s_len(OS_NAME " x64") * 4, fb_h / 3, OS_NAME " x64", 0xE6E6F0, 0x000000);
+    for (int s = 0; s < 180; s++) {
+        xp_bar(s);
         fb_flip();
         for (volatile int d = 0; d < 2000; d++);
     }
-    /* Hold briefly */
-    for (volatile int d = 0; d < 40000; d++);
 }
 
 /* ================================================================
@@ -805,18 +818,17 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     if (run == -1) {
-        /* Restart with spinner animation */
-        fb_clear(0x000000);
-        int cx = fb_w / 2;
-        fb_txt(cx - 44, fb_h/2 - 12, "LunarSnow OS", 0x3C50A0, 0x000000);
-        fb_txt(cx - 40, fb_h/2 + 8,  "Restarting...", 0xE6E6F0, 0x000000);
-        fb_flip();
+        /* Restart — XP style */
+        xp_show("Please wait while LunarSnow restarts");
+        int s = 0;
+        for (volatile int d = 0; d < 60000; d++);
+        xp_bar(s++); fb_flip();
         acpi_reset();
         for (volatile int d = 0; d < 30000; d++);
-        fb_txt(cx + 48, fb_h/2 + 8, "-", 0x5A5A7A, 0x000000); fb_flip();
+        xp_bar(s++); fb_flip();
         outb(0x64, 0xFE);
         for (volatile int d = 0; d < 30000; d++);
-        fb_txt(cx + 48, fb_h/2 + 8, "\\", 0x5A5A7A, 0x000000); fb_flip();
+        xp_bar(s++); fb_flip();
         __asm__ __volatile__(
             "pushq $0\n\t"
             "pushq $0\n\t"
@@ -824,37 +836,33 @@ void kmain(uint32_t magic, void *mbinfo)
             "ud2\n\t"
             : : : "memory"
         );
-        for (volatile int d = 0; d < 30000; d++);
-        fb_txt(cx + 48, fb_h/2 + 8, "|", 0x5A5A7A, 0x000000); fb_flip();
-        for (;;) asm("hlt");
+        for (;;) { xp_bar(s++); fb_flip(); for (volatile int d = 0; d < 20000; d++); }
     }
 
-    /* Shutdown with spinner animation */
-    fb_clear(0x000000);
-    int cx = fb_w / 2;
-    fb_txt(cx - 44, fb_h/2 - 12, "LunarSnow OS", 0x3C50A0, 0x000000);
-    fb_txt(cx - 44, fb_h/2 + 8,  "Shutting down...", 0xE6E6F0, 0x000000);
-    fb_flip();
+    /* Shutdown — XP style */
+    xp_show("LunarSnow is shutting down");
+    int s = 0;
+    for (volatile int d = 0; d < 60000; d++);
+    xp_bar(s++); fb_flip();
     piix4_poweroff();
     for (volatile int d = 0; d < 30000; d++);
-    fb_txt(cx + 52, fb_h/2 + 8, "-", 0x5A5A7A, 0x000000); fb_flip();
+    xp_bar(s++); fb_flip();
     acpi_poweroff();
     for (volatile int d = 0; d < 30000; d++);
-    fb_txt(cx + 52, fb_h/2 + 8, "\\", 0x5A5A7A, 0x000000); fb_flip();
+    xp_bar(s++); fb_flip();
     outb(0xB3, 0x00); outb(0xB2, 0x01);
     for (volatile int d = 0; d < 30000; d++);
-    fb_txt(cx + 52, fb_h/2 + 8, "|", 0x5A5A7A, 0x000000); fb_flip();
+    xp_bar(s++); fb_flip();
     outb(0xB3, 0x00); outb(0xB2, 0x02);
     for (volatile int d = 0; d < 30000; d++);
-    fb_txt(cx + 52, fb_h/2 + 8, "/", 0x5A5A7A, 0x000000); fb_flip();
+    xp_bar(s++); fb_flip();
     outb(0xB3, 0x00); outb(0xB2, 0x03);
     for (volatile int d = 0; d < 30000; d++);
-    fb_txt(cx + 52, fb_h/2 + 8, "-", 0x5A5A7A, 0x000000); fb_flip();
+    xp_bar(s++); fb_flip();
     outb(0xB3, 0x01); outb(0xB2, 0x53);
     for (volatile int d = 0; d < 30000; d++);
-    fb_txt(cx + 52, fb_h/2 + 8, "\\", 0x5A5A7A, 0x000000); fb_flip();
+    xp_bar(s++); fb_flip();
     outw(0x604, 0x2000); outw(0xB004, 0x2000);
     outw(0x600, 0x34); outb(0xB2, 0x00);
-    fb_txt(cx - 48, fb_h/2 + 30, "Safe to power off", 0x5A5A7A, 0x000000); fb_flip();
-    for (;;) asm("hlt");
+    for (;;) { xp_bar(s++); fb_flip(); for (volatile int d = 0; d < 20000; d++); }
 }
