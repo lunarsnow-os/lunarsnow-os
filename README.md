@@ -95,7 +95,7 @@ create_fat_disk.sh  → Cria imagem de disco 128MB (FAT32 + SnowFS)
 | Paint | `progs/paint.c` | Desenho com rato, paleta 12 cores, Save/Load BMP via SnowFS |
 | File Manager | `progs/filemgr.c` | Navega initrd + FAT32 + SnowFS, abre .txt no Notepad, New/Del |
 | About | `progs/about.c` | CPU, vendor, RAM, uptime, resolução, initrd, logo LunarSnow |
-| Control Panel | `progs/controlpanel.c` | Definições do rato e ecrã (VBE) |
+| Control Panel | `progs/controlpanel.c` | Definições do rato, ecrã (VBE) e energia/bateria |
 | Clock | `progs/clock.c` | Relógio analógico + calendário |
 | Task Manager | `progs/taskmgr.c` | RAM, CPU vendor, disco, versão |
 | BMP Viewer | `progs/bmpview.c` | Abre BMP de initrd/SnowFS/FAT com scaling |
@@ -125,6 +125,17 @@ O File Manager lista as 3 fontes (initrd, FAT32, SnowFS).
 make fat_disk.raw          # gera disco 128MB com FAT32 + SnowFS
 bash create_fat_disk.sh    # ou manualmente
 ```
+
+## Bateria
+
+O LunarSnow OS lê a percentagem da bateria via **SMBus/Smart Battery** (presente na maioria dos portáteis Intel). O indicador aparece na taskbar entre os botões de janela e o relógio. Cores:
+- **Verde** (>20%) — normal / a carregar (símbolo `~`)
+- **Laranja** (10–20%) — atenção
+- **Vermelho** (<10%) — crítico
+
+Painel de Controlo → Power mostra estado detalhado.
+
+Em VMs (VirtualBox, QEMU) a bateria é **simulada** (cicla 80%→0%→100%) para teste visual.
 
 ## Atalhos
 
