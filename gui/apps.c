@@ -256,8 +256,8 @@ static void pwr_draw(int wi) {
     Win *w = &wins[wi];
     int x = w->x + 16, y = w->y + 30;
     pwr_icon(x, y, 0x50D070);
-    fb_txt(x + 36, y + 2, "O que deseja fazer com o", C_TTT, w->bg);
-    fb_txt(x + 36, y + 18, "computador?", C_TTT, w->bg);
+    fb_txt(x + 36, y + 2, "What do you want the", C_TTT, w->bg);
+    fb_txt(x + 36, y + 18, "computer to do?", C_TTT, w->bg);
 }
 
 static void pwr_shut(void) {
@@ -272,10 +272,10 @@ static void pwr_reboot(void) {
 }
 
 void power_dialog(void) {
-    pwr_wi = gui_wnew("Desligar computador", (fb_w - 340) / 2, (fb_h - 180) / 2, 340, 180);
-    gui_wbtn(pwr_wi, "Desligar", 20, 90, 90, 32, pwr_shut);
-    gui_wbtn(pwr_wi, "Reiniciar", 125, 90, 90, 32, pwr_reboot);
-    gui_wbtn(pwr_wi, "Cancelar", 230, 90, 90, 32, app_close);
+    pwr_wi = gui_wnew("Turn off computer", (fb_w - 340) / 2, (fb_h - 180) / 2, 340, 180);
+    gui_wbtn(pwr_wi, "Shut Down", 20, 90, 90, 32, pwr_shut);
+    gui_wbtn(pwr_wi, "Restart", 125, 90, 90, 32, pwr_reboot);
+    gui_wbtn(pwr_wi, "Cancel", 230, 90, 90, 32, app_close);
     gui_set_dirty();
     wins[pwr_wi].draw = pwr_draw;
 }
