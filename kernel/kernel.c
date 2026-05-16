@@ -385,97 +385,11 @@ static int fb_init(uint32_t magic, void *mbinfo)
 
 static void boot_screen(void)
 {
-    uint32_t bg = 0x000000;
-    fb_clear(bg);
-
-    uint32_t panel_c = 0x0F0F24;
-    int cx = fb_w / 2;
-    int pw = 380, ph = 340;
-    int px = cx - pw / 2, py = fb_h / 2 - ph / 2;
-    fb_rect(px, py, pw, ph, panel_c);
-    fb_border(px, py, pw, ph, 0x3C50A0);
-
-    char *title = OS_NAME " x64 Edition";
-    int tx = cx - s_len(title) * 4;
-    fb_txt(tx, py + 30, title, 0xE6E6F0, panel_c);
-
-    char *ver = OS_VER " " OS_ARCH;
-    int vx = cx - s_len(ver) * 4;
-    fb_txt(vx, py + 54, ver, 0x5A5A7A, panel_c);
-
-    int pbx = px + 30, pby = py + 85;
-    int pbw = pw - 60;
-    fb_rect(pbx, pby, pbw, 14, 0x1A1A3A);
-    fb_border(pbx, pby, pbw, 14, 0x3C50A0);
-
-    int lx = px + 20, ly = py + 120;
-    int next_msg = 0;
-    const char *msgs[] = {
-        "Bootloader (multiboot)",
-        "Framebuffer",
-        "Memory map",
-        "PCI bus",
-        "PS/2 mouse",
-        "CPU detection",
-        "RTC",
-        "Initrd",
-    };
-    int pcts[] = { 10, 25, 40, 55, 70, 85, 95, 100 };
-    int n_msgs = 8;
-
-    for (int p = 0; p <= 100; p++) {
-        int bw = ((pbw - 4) * p) / 100;
-        fb_rect(pbx + 2, pby + 2, bw, 10, 0x3C50A0);
-        if (next_msg < n_msgs && p >= pcts[next_msg]) {
-            fb_txt(lx + 10, ly, msgs[next_msg], 0x8888AA, panel_c);
-            fb_txt(lx - 10, ly, ">", 0x3C50A0, panel_c);
-            ly += 18;
-            next_msg++;
-        }
-        /* Show current resolution */
-        char res[32]; int ri = 0;
-        int w = fb_w, h = fb_h;
-        if (w >= 1000) { res[ri++] = '0' + (w/1000)%10; }
-        if (w >= 100)  { res[ri++] = '0' + (w/100)%10; }
-        if (w >= 10)   { res[ri++] = '0' + (w/10)%10; }
-        res[ri++] = '0' + w%10;
-        res[ri++] = 'x';
-        if (h >= 1000) { res[ri++] = '0' + (h/1000)%10; }
-        if (h >= 100)  { res[ri++] = '0' + (h/100)%10; }
-        if (h >= 10)   { res[ri++] = '0' + (h/10)%10; }
-        res[ri++] = '0' + h%10;
-        res[ri] = 0;
-        fb_txt(cx - s_len(res) * 4, py + ph - 30, res, 0x5A5A7A, panel_c);
-        fb_flip();
-        for (volatile int d = 0; d < 40000; d++);
-    }
-
-    int h, m, s, t0;
-    rtc_read(&h, &m, &s);
-    t0 = h * 3600 + m * 60 + s;
-    for (int wait = 0; wait < 400; wait++) {
-        rtc_read(&h, &m, &s);
-        int t = h * 3600 + m * 60 + s;
-        if (t < t0) t += 86400;
-        if (t - t0 >= 2) break;
-        for (volatile int d = 0; d < 100000; d++);
-    }
-}
-
-/* ================================================================
-   ANIMATION
-   ================================================================ */
-
-static void curtain_close(void)
-{
-    if (fb_w <= 0 || fb_h <= 0) return;
-    for (int i = 0; i < fb_h / 2; i += 4) {
-        fb_rect(0, i, fb_w, 4, 0x000000);
-        fb_rect(0, fb_h - i - 4, fb_w, 4, 0x000000);
-        fb_flip();
-        for (volatile int d = 0; d < 15000; d++);
-    }
-    fb_clear(0);
+    fb_clear(0x000000);
+    char *title = OS_NAME " x64";
+    fb_txt((fb_w - s_len(title) * 8) / 2, fb_h / 2 - 20, title, 0xE6E6F0, 0x000000);
+    char *ver = OS_VER;
+    fb_txt((fb_w - s_len(ver) * 8) / 2, fb_h / 2, ver, 0x5A5A7A, 0x000000);
     fb_flip();
 }
 
@@ -882,7 +796,7 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     if (run == -1) {
-        curtain_close();
+        fb_clear(0x000000); fb_flip();
         int dy = 10;
         #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
         DBG("Reboot: ACPI reset...");
@@ -906,7 +820,7 @@ void kmain(uint32_t magic, void *mbinfo)
     }
 
     /* Shutdown */
-    curtain_close();
+    fb_clear(0x000000); fb_flip();
     int dy = 10;
     #define DBG(s) do { fb_txt(10, dy, s, 0xFFFFFF, 0x000000); fb_flip(); dy += 18; } while(0)
     DBG("Shutdown: PIIX4...");
