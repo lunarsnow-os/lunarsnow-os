@@ -281,8 +281,19 @@ void gui_mouse_click(void) {
             int bw = s_len(wins[i].title) * 8 + 12;
             if (bw > 140) bw = 140;
             if (x >= bx && x < bx + bw) {
-                if (wins[i].minimized) wins[i].minimized = 0;
-                gui_wfront(i); focus_mode = 0; return;
+                if (wins[i].minimized) {
+                    wins[i].minimized = 0;
+                    gui_wfront(i);
+                } else if (i == act) {
+                    wins[i].minimized = 1;
+                    int found = 0;
+                    for (int j = nw - 1; j >= 0; j--)
+                        if (j != i && !wins[j].minimized) { gui_wfront(j); found = 1; break; }
+                    if (!found) act = -1;
+                } else {
+                    gui_wfront(i);
+                }
+                focus_mode = 0; return;
             }
             bx += bw + 2;
         }
